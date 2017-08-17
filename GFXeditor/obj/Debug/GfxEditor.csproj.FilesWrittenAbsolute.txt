@@ -1,0 +1,8 @@
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/obj/Debug/.NETFramework,Version=v4.0.AssemblyAttribute.cs
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/obj/Debug/GfxEditor.Form1.resources
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/obj/Debug/GfxEditor.Properties.Resources.resources
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/bin/Debug/GfxEditor.exe.config
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/bin/Debug/GfxEditor.pdb
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/bin/Debug/GfxEditor.exe
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/obj/Debug/GfxEditor.exe
+/home/sl1pkn07/aplicaciones/FlySkyI6/GFXeditor/obj/Debug/GfxEditor.pdb
