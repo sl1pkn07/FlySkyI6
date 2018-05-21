@@ -16,6 +16,9 @@
 #define OPERATOR_LT 0
 #define OPERATOR_GT 1
 
+extern long long __mul64(long long a, long long b);
+
+
 void add2ByteSensor(uint8_t sensorID, uint8_t sensorIndex, uint16_t value){
 	char shortSensor[4];
 	shortSensor[0] = sensorID;
@@ -26,12 +29,11 @@ void add2ByteSensor(uint8_t sensorID, uint8_t sensorIndex, uint16_t value){
 }
 
 #pragma GCC optimize ("Os")
-/*
- * getALT(sensorData & 0x7FFFF)
- * */
+
 void acData(uint8_t* rxBuffer){
 	uint32_t sensorData = 0;
 	uint8_t sensorIndex = 0;
+	uint16_t shortSensor = 0;
 	int index = 1;
 	int i = 0;
 	int tmp = 0;
@@ -42,8 +44,17 @@ void acData(uint8_t* rxBuffer){
 		offset = -1;
 		sensorIndex = rxBuffer[index +1];
 		sensorData = (rxBuffer[index+6] << 24 | rxBuffer[index+5] << 16 | rxBuffer[index+4] << 8 | rxBuffer[index+3]);
-
-		if(rxBuffer[index]==IBUS_MEAS_TYPE_GPS_FULL){
+		if(rxBuffer[index]==IBUS_MEAS_TYPE_PRES){
+			offset = SENSORS_ARRAY_LENGTH - 1;
+			shortSensor = (uint16_t)(sensorData >> 19);
+			add2ByteSensor(IBUS_MEAS_TYPE_TEM, sensorIndex, shortSensor);
+			sensorData = sensorData & 0x7FFFF;
+			tmp = getALT(sensorData, shortSensor);
+			i = IBUS_MEAS_TYPE_ALT - IBUS_MEAS_TYPE_GPS_LAT;
+			longSensors[i] = tmp;
+			add2ByteSensor(IBUS_MEAS_TYPE_ALT, sensorIndex, i);
+		}
+		else if(rxBuffer[index]==IBUS_MEAS_TYPE_GPS_FULL){
 			add2ByteSensor(IBUS_MEAS_TYPE_GPS_STATUS, sensorIndex, rxBuffer[index+4] << 8 | rxBuffer[index+3]);
 			tmp = index+5;
 			for(i=0; i <3; i++){
@@ -67,9 +78,6 @@ void acData(uint8_t* rxBuffer){
 				tmp+=2;
 			}
 		}
-		else if(rxBuffer[index]==IBUS_MEAS_TYPE_PRES){
-			offset = SENSORS_ARRAY_LENGTH - 1;
-		}
 		else if(rxBuffer[index] >= IBUS_MEAS_TYPE_GPS_LAT && rxBuffer[index] <= IBUS_MEAS_TYPE_S8a){
 			offset = rxBuffer[index] - IBUS_MEAS_TYPE_GPS_LAT;
 		}
@@ -81,7 +89,7 @@ void acData(uint8_t* rxBuffer){
 	}
 	while (index <= 28 );
 }
-
+/*
 void loadModSettings(){
 	settingsValidation();
 	readEeprom((uint8_t *)&modConfig, 0xBC0, sizeof(modConfig));
@@ -90,6 +98,112 @@ void loadModSettings(){
 void saveModSettings(){
 	saveEeprom((uint8_t *)&modConfig, 0xBC0, sizeof(modConfig));
 	someSPImethod();
+}
+*/
+
+modelConfStruct* getModelModConfig(){
+	uint8_t modelIndex = ((*(uint8_t *)(CURRENT_MODEL_INDEX)));
+	modelConfStruct* ptr = &modConfig2.modelConfig[modelIndex];
+	return ptr;
+}
+
+#define ITEMS_PER_ROW 3
+#define MAX_ROWS 8
+void mixConfig() {
+	uint32_t key = 0;
+	uint8_t row = 0;
+	uint8_t col = 0;
+	uint8_t rowPos = 0;
+
+	int8_t config[MIX_CONFIG_SIZE_BYTES];
+	uint8_t index = 0;
+	int8_t value = 0;
+	struct modelConfStruct *configPtr = getModelModConfig();
+	memcpy_(config, configPtr->mix, sizeof(configPtr->mix));
+
+	char buffer[16];
+	char *bufferPtr;
+
+	uint8_t channel = 0;
+
+	do {
+		callSetupDMAandSend();
+		//displayPageHeader((char*)0xDBCB);
+		channel = 7;
+		for (uint8_t rowIndex= 0; rowIndex < MAX_ROWS; rowIndex++, channel++) {
+			rowPos = rowIndex << 3;
+			/*buffer[0] = channel < 10 ?  ' ' : '1';
+			buffer[1] = '0' + (channel < 10 ?  channel : (channel - 10));
+			buffer[2] = 0;
+			displayTextAt(buffer, 0, rowPos, 0);
+			*/
+			for (uint8_t colIndex = 0; colIndex < ITEMS_PER_ROW; colIndex++) {
+				int16_t val = (int16_t)config[3 * rowIndex + colIndex];
+				bufferPtr = buffer;
+				if(val < 0){
+					val = val *-1;
+					buffer[0] = '-';
+					bufferPtr++;
+				}
+				sprintfCall(bufferPtr, (const char*)0x5564, val);
+				displayTextAt(buffer, mixPos[colIndex] + 8, rowPos, 0);
+			}
+			displayGFX((gfxInfo*)GFX_ARROW, mixPos[col], row << 3);
+		}
+
+
+		LCD_updateCALL();
+		key = getKeyCode();
+		index = 3 * row + col;
+		value = config[index];
+
+		if (key == KEY_SHORT_OK)
+		{
+			col++;
+			if (col >= ITEMS_PER_ROW) {
+				col = 0;
+				row++;
+			}
+			if (row >= MAX_ROWS) row = 0;
+		}
+		else if (key == KEY_SHORT_UP || key == KEY_LONG_UP) {
+			if(value >= 127) continue;
+			if(col < 2 && value >= config[index+1])continue;
+			config[index] = ++value;
+		}
+		else if (key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) {
+			if(value <= -127) continue;
+			if(col > 0 && value <= config[index-1]) continue;
+			config[index] = --value;
+		}
+	}
+	while (key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
+	if (key == KEY_LONG_CANCEL) {
+		memcpy_(configPtr->mix, config, sizeof(configPtr->mix));
+	}
+}
+
+int mix(int value, int8_t min, int8_t max, int8_t subtrim){
+	uint8_t input_range_fixed_q20 = 105;
+	int16_t lim_p = max * 100;
+	int16_t lim_n = min * 100;
+	int16_t ofs = subtrim * 100;
+	uint8_t neg = 0; //get from config
+
+	if (value) {
+		int16_t tmp = (value > 0) ? (lim_p - ofs) : (-lim_n + ofs);
+		value = (int32_t)value * tmp;
+		if (value < 0) {
+			value *= -1;
+			neg = !neg;
+		}
+		value = (int)(__mul64((uint64_t)value, (uint64_t)input_range_fixed_q20) >> 20);
+		if (neg) value *= -1;
+		ofs += value;
+	}
+	if (ofs > lim_p) ofs = lim_p;
+	if (ofs < lim_n) ofs = lim_n;
+	return ofs;
 }
 
 
@@ -124,74 +238,50 @@ uint32_t divMod(uint32_t val, uint32_t divisor, uint32_t* mod){
 }
 
 void printTimer(int32_t skipPrint){
-	uint32_t now = *(uint32_t *)(0xE000E018);
+	const uint32_t now = *((uint32_t *)(0xE000E018));
+	const uint32_t ms100 = 480007;
 	uint32_t diff = 0;
 	uint32_t h = 0;
 	uint32_t m = 0;
 	uint32_t s = 0;
-	if(timerValue > 0 || isTimerActive()){
-		if(lastTimerUpdate == 0) lastTimerUpdate = *(uint32_t *)(0xE000E018);
+	if(isTimerActive()){
+		if(lastTimerUpdate == 0) lastTimerUpdate = now;
 		else{
 			diff = (now - lastTimerUpdate) & 0xFFFFFF;
-			if(diff > 480008){ //3529827,038475115 0x35DC63
-				//0.00002083ms
-				ticks100MS++; //+100ms
-				//1 tick = 0,208 us 0.02083us
-				//1000 us = 1ms
-				//1s = 1000000us
-				//100ms = 100000us
-				//1000 ms = 1s
-
-				//100 ms = 100000 us =
-				if(ticks100MS>=10){
-					ticks100MS-=10;
-					timerValue++;
-					h = divMod(timerValue, 3600, &m);
-					m = divMod(m, 60, &s);
-					lastTimerUpdate = *(uint32_t *)(0xE000E018);
-					sprintfCall((char*)timerBuffer, (const char*)timerFormat, h,m,s);
-				}
-			//if(diff > 0x2DC347){
-
-
+			if(diff > ms100){
+				ticks100MS++;
+			}
+			if(ticks100MS>=9){
+				ticks100MS=0;
+				timerValue++;
+				h = divMod(timerValue, 3600, &m);
+				m = divMod(m, 60, &s);
+				lastTimerUpdate = now - diff;
+				sprintfCall((char*)timerBuffer, (const char*)timerFormat, h,m,s);
 			}
 		}
-
 	}
 	if(timerBuffer[0]==0) strcatCall((char*)timerBuffer, (const char*)timerNull);
 	if(skipPrint ==0)displayTextAt((char*)timerBuffer, 1, 0, 0);
 }
 
 uint32_t isTimerActive(){
-	uint8_t channel = modConfig.timerCH;
-	if(channel > 16) return 0;
-	uint16_t value	= modConfig.timerStart;
-	if(value > 2000) return 0;
-
-	uint32_t address = 0x1FFFFD9C;
-	if(*(uint8_t *)(address) == 0x58){
-		address++;
-		channel -=1;
-		address += 2*channel;
-		uint16_t val = (uint16_t)(*(uint8_t *)address) | ((uint16_t)(*(uint8_t *)(address+1)) << 8);
-		if(val > value) return 1;
-	}
-	return 0;
-
-	/*
-
-
-	if(*(uint8_t *)(address) == 0x58){
-		address++;
-		channel -=1;
-		address += 2*channel;
-		uint16_t val = (uint16_t)(*(uint8_t *)address) | ((uint16_t)(*(uint8_t *)(address+1)) << 8);
-		if(val > 1100){
-			return 1;
-		}
-	}
-	return 0;*/
+	const uint32_t one_hundred = 100;
+	int32_t one_thousand = one_hundred * 10;
+	int32_t ten_thousands = one_thousand * 10;
+	struct modelConfStruct *configPtr = getModelModConfig();
+	uint8_t channel = configPtr->timerCH;
+	if(timerValue > 0 && (channel & (1<<7))) return 1; //HOLD mode
+	channel = channel & 0xf;
+	//if(channel > (1 <<4)) return 0;
+	//if(value > one_thousand*2) return 0; // > 2000
+	int32_t chValue = *(((int32_t *)CHANNEL_VALUE)+(channel-1));
+	int32_t configVal = ((int32_t)configPtr->timerStart - one_thousand) * 20 - ten_thousands;
+	if(channel == 0) return 0;
+	return chValue > configVal;
 }
+
+
 #define SW_A 0u
 #define SW_B 1u
 #define SW_C 2u
@@ -202,92 +292,157 @@ uint32_t isTimerActive(){
 void auxChannels2(){
 	uint8_t row = 0;
 	uint32_t key = 0;
+	uint8_t page = 0;
+	uint8_t auxValue = 0;
+	uint8_t index = 0;
+	uint8_t modelType = 0;
+	uint8_t heli = 0;
 	uint32_t* namePtr = (uint32_t*)0x200000B8;
-	char* name2Ptr = (char*) 0xF638;
 	char* tmp = 0;
-	//0x200002AD
-	uint8_t modelIndex = ((*(uint8_t *)(CURRENT_MODEL_INDEX)));
-	modelConfStruct model = modConfig2.modelConfig[modelIndex];
-
-	uint8_t auxChannels[4];
-	auxChannels[0] = model.ch11_12 >> 4;
-	auxChannels[1] = model.ch11_12 &  0xF;
-	auxChannels[2] = model.ch13_14 >> 4;
-	auxChannels[3] = model.ch13_14 &  0xF;
+	uint8_t* settings = (uint8_t*)((*(uint32_t *)(USED_MODEL_PTR)));
+	uint8_t auxChannels[10];
+	modelType = settings[9];
+	heli = settings[55] & 8;
+	settings += 60;
+	auxChannels[0] = settings[0];
+	auxChannels[1] = settings[1];
+	extractConfigCh7_14(auxChannels +2);
 
 	char buffer[32];
-
-	while(1){
+	do{
 		callSetupDMAandSend();
 		displayPageHeader((char*)0xCC5A);
-		uint32_t ptr = 0x9650;
-		//copy channel
-		for(uint8_t i=0; i <7; i++){
-			buffer[i] = *((char*)(ptr + i));
-		}
-		buffer[7] = '1';
 
-		for(uint8_t i=0; i < sizeof(auxChannels); i++){
-			buffer[8] = '1' + i;
-			buffer[9] = 0;
-			displayTextAt(buffer, 8, 16 + i*8, 0);
-
-			if(auxChannels[i] <= 6){
-				tmp = (char*)(*(namePtr + auxChannels[i]));
+		for(uint8_t i=0; i < 6; i++){
+			index = (page * 6) + i;
+			uint8_t channel = 5 + index;
+			if(channel > 14) continue;
+			int posY = 16 + i *8;
+			displayTextAt((char*)0x9650, 8, posY, 0);
+			sprintfCall(buffer, (const char*) formatNumber, channel);
+			displayTextAt(buffer, 64, posY, 0);
+			auxValue = auxChannels[index];
+			if(auxValue <= 6){
+				tmp = (char*)(*(namePtr + auxValue));
 			}
-			else if(auxChannels[i] <= 15){
-				tmp = name2Ptr + (6 * (auxChannels[i] - 7));
+			else if(auxValue <= 15){
+				tmp = auxSW + (6 * (auxValue - 7));
+			}
+
+			if((channel == 6 && modelType >=2) || (channel == 5 && modelType && heli)){
+				tmp = (char*) 0xCA9F;
 			}
 
 			if(tmp!=0 && tmp[0]!=0){
-				displayTextAt(tmp, 88, 16 + i*8, 0);
+				displayTextAt(tmp, 88, posY, 0);
 			}
 		}
 		displayGFX((gfxInfo*) GFX_ARROW, 0, 16 + (row*8));
-
 		LCD_updateCALL();
 		key = getKeyCode();
+		index = (page * 6) + row;
 		if(key == KEY_SHORT_OK) {
 			row++;
-			if(row >=4)row = 0;
+			if((page == 1 && row ==4) || row == 6){
+				if(++page == 2) page = 0;
+				row = 0;
+			}
 		}
 		else if(key == KEY_LONG_OK) {
-			auxChannels[row] = 0;
+			auxChannels[index] = 0;
 		}
 		else if(key == KEY_SHORT_UP || key == KEY_LONG_UP) {
-			if(auxChannels[row] < 15){
-				auxChannels[row]++;
+			if(auxChannels[index] < MAX_INDEX){
+				auxChannels[index]++;
 			}
 		}
 		else if(key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) {
-			if(auxChannels[row] > 0){
-				auxChannels[row]--;
+			if(auxChannels[index] > 0){
+				auxChannels[index]--;
 			}
 		}
-		else break;
 	}
+	while ( key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
+
 	if(key == KEY_LONG_CANCEL){
-		modConfig2.modelConfig[modelIndex].ch11_12 = (auxChannels[0] << 4) | auxChannels[1];
-		modConfig2.modelConfig[modelIndex].ch13_14 = (auxChannels[2] << 4) | auxChannels[3];
+		saveAuxCh5_14(auxChannels);
 	}
-
 }
-void createPacketCh1114(){
-	int32_t channel11Address = 0x1FFFFE08;
-	uint8_t modelIndex = ((*(uint8_t *)(CURRENT_MODEL_INDEX)));
-	modelConfStruct model = modConfig2.modelConfig[modelIndex];
+void extractConfig(uint8_t val, uint8_t* result){
+	result[0] = val & 0xF;
+	result[1] = val >> 4;
+}
 
-	uint8_t auxChannels[4];
-	auxChannels[0] = model.ch11_12 >> 4;
-	auxChannels[1] = model.ch11_12 &  0xF;
-	auxChannels[2] = model.ch13_14 >> 4;
-	auxChannels[3] = model.ch13_14 &  0xF;
+void extractConfigCh7_14(uint8_t* result){
+	struct modelConfStruct *configPtr = getModelModConfig();
+	const uint8_t* settings = (uint8_t*)((*(uint32_t *)(USED_MODEL_PTR)));
+	extractConfig(settings[141], result);
+	extractConfig(settings[145], result+2);
+	extractConfig(configPtr->ch11_12, result+4);
+	extractConfig(configPtr->ch13_14, result+6);
+}
+void saveAuxCh5_14(uint8_t* current){
+	struct modelConfStruct *configPtr = getModelModConfig();
+	uint8_t* settings = (uint8_t*)((*(uint32_t *)(USED_MODEL_PTR)));
+	settings+=60;
+	settings[0] = current[0];
+	settings[1] = current[1];
+	settings+=81;
+	settings[0] = current[2] | (current[3] << 4);
+	settings[4] = current[4] | (current[5] << 4);
+	configPtr->ch11_12 = current[6] | (current[7] << 4);
+	configPtr->ch13_14 = current[8] | (current[9] << 4);
+}
+
+
+
+void createPacketCh1114(){
+	int32_t value = 0;
+	int32_t channel7Address = 0x1FFFFDF8;
+	struct modelConfStruct *configPtr = getModelModConfig();
+	struct mixConfStruct *mixPtr;
+	const uint8_t* settings = (uint8_t*)((*(uint32_t *)(USED_MODEL_PTR)));
+	settings += 141;
+	//int32_t channel11Address = 0x1FFFFE08;
+	//struct modelConfStruct *configPtr = getModelModConfig();
+	uint8_t auxChannels[8];
+	extractConfigCh7_14(auxChannels);
 
 	for(uint8_t i=0; i < sizeof(auxChannels); i++){
-		*((int32_t*)(channel11Address + 4*i)) = getAuxChannel(auxChannels[i]);
+		value = getAuxChannel(auxChannels[i]);
+		mixPtr = &(configPtr->mix[i]);
+		if(mixPtr->min != 0 || mixPtr->min != 0){
+				value = mix(value, mixPtr->min, mixPtr->max, mixPtr->subtrim);
+		}
+		*((int32_t*)(channel7Address + 4*i)) = value;
 	}
-
 }
+/*
+int mapSNR(){
+	int snr = getSensorValue(IBUS_MEAS_TYPE_SNR, 0,0);
+	if(snr == 0x8000) return -10000;
+	if(snr >= maxSNR) {
+		maxSNR = snr;
+		return 10000;
+	}
+	snr = maxSNR - snr;
+	if(snr > 20) return -10000;
+	snr = ((((10000 << 1) * (int32_t)snrMulti[snr])) >> 10) - 10000;
+	return snr;
+}*/
+#define MAX_SNR 40
+#define MIN_SNR 9
+
+
+int mapSNR(){
+	int snr = getSensorValue(IBUS_MEAS_TYPE_SNR, 0,0);
+	if(snr == 0x8000 || snr <= MIN_SNR) return -10000;
+	if(snr >= MAX_SNR) return 10000;
+	snr -=9;
+	snr = (snr * 645) - 10000;
+	return snr;
+}
+
 int getAuxChannel(uint32_t request){
 	int sw1 = 0;
 	int sw2 = 0;
@@ -306,14 +461,12 @@ int getAuxChannel(uint32_t request){
 		//17 1				20
 		request -= 12;
 		request *=4;
-		return  *(int32_t *)(PPM_IN_BUFFER_CH6 - request);
+		return  *(int32_t *)(PPM_IN_BUFFER + request);
 	}
 	if(request == 11){ //error
-		sw1 = getSensorValue(254, 0,0);
+		sw1 = getSensorValue(IBUS_MEAS_TYPE_ERR, 0,0);
 		if(sw1 == 0x8000) sw1 = -10000;
-		else if(sw1 > 50) sw1 = -200* (sw1 - 50);
-		else sw1 = 200 * (50 - sw1);
-		return sw1;
+		return ((100 - sw1) * 200) - 10000;
 	}
 	else if(request == 7){ // A+B
 		if(swB_3pos != 0){
@@ -327,15 +480,8 @@ int getAuxChannel(uint32_t request){
 			goto TwoPos;
 		}
 	}
-	else if(request == 10){ // A+D or E
-		/*
-		 uint32_t portD = ((*(uint32_t *)(0x400FF0D0)));
-		if ( !(portD & 0x4))  return 10000;
-		return -10000;
-		 */
-		sw1 = SW_A;
-		sw2 = SW_D;
-		goto TwoPos;
+	else if(request == 10){ // SNR
+		return mapSNR();
 	}
 	else if(request == 8){ // B+C
 		sw1 = SW_C;
@@ -404,20 +550,21 @@ int getSWState(uint32_t swIndex){
 }
 
 
-/*Belongs to .s_modMenu 0xFFA0 */
+/*Belongs to .mod_modMenu 0xFFA0 */
 void displayMenu(){
-	showNavPage((const char*) extraMenu, 5, (manuEntry*)menuList);
+	showNavPage((const char*) extraMenu, EXTRA_MENU_ITEMS, (manuEntry*)menuList);
 }
 
 void BatteryType() {
 	uint32_t key = 0;
-	uint16_t batteryVolt = modConfig.batteryVoltage;
+
+	uint16_t batteryVolt = modConfig2.batteryVoltage;
 	char buffer[32];
 		while (1) {
 			callSetupDMAandSend();
 			if(batteryVolt > 900) batteryVolt = 0;
-			displayPageHeader((char*)0xFFA8);
-			displayTextAt((char*)0xFF98, 8, 24,0);
+			displayPageHeader((char*)(extraMenu+EXTRA_MENU_TXBAT));
+			displayTextAt((char*)(extraMenu+EXTRA_MENU_ALARM), 8, 24,0);
 			formatSensorValue(buffer, IBUS_MEAS_TYPE_INTV, batteryVolt);
 			displayTextAt((char*)buffer, 8, 32,0);
 			LCD_updateCALL();
@@ -431,68 +578,131 @@ void BatteryType() {
 		}
 
 	if( key == KEY_LONG_CANCEL) {
-		modConfig.batteryVoltage = batteryVolt;
-		saveModSettings();
+		modConfig2.batteryVoltage = batteryVolt;
+	}
+}
+void play(int freq, int duration, int pause){
+	if(someBeepCheck() >= 2){
+		beep(freq,duration);
+		if(pause > 0) beep(0,pause);
 	}
 }
 
- void ChackCustomAlarms(){
-	 int32_t timer = ((*(int32_t *)(TIMER_SYS_TIM)));
-	 int32_t lastAlarm = *((int32_t *)LAST_ALARM_TIMER);
-	 int32_t lastTelemetryUpdate = *((int32_t *)TELEMETRY_UPDATE_TIMER);
-	 uint8_t beepCount = 0;
-	 uint8_t sensorID = 0;
+void beepSilent(){
 
-	 if(timer < 100 ) return;
+}
 
-	 if((uint32_t)modConfig.timerAlarm != 0 && timerValue > (uint32_t)modConfig.timerAlarm) {
-		 beepCount = 1;
-	 }
+#define BEEP_DEFAULT_FREQ (900)
 
-	 if(timer - lastTelemetryUpdate < 1000){
-		 for(int i = 0; i < 3; i++){
-			sensorID = modConfig.alarm[i].sensorID;
-			if(sensorID == 0xff) continue;
-			int32_t sensorValue = getSensorValue(sensorID, 0, 0);
-			if(sensorID >= IBUS_MEAS_TYPE_GPS_LAT && sensorID <= IBUS_MEAS_TYPE_S8a && sensorValue < SENSORS_ARRAY_LENGTH){
-				sensorValue = longSensors[sensorValue];
-			}
-			if(modConfig.alarm[i].operator == OPERATOR_GT){
-				if(sensorValue > modConfig.alarm[i].value){
-					beepCount = i+2;
-					break;
+#define VARIO_BASE_FREQ		1200
+// gain can be 0..15, representing gains 1/8 (>> 3) to 2048 (<< 11)
+#define VARIO_GAIN_OFFSET	(1 << (VARIO_MAX_GAIN_BITS - 2))
+// #define VARIO_TEST_CH6_INSTEAD_OF_SENSOR	1
+
+void CheckCustomAlarms(){
+	int32_t timer = ((*(int32_t *)(TIMER_SYS_TIM)));
+	int32_t lastAlarm = *((int32_t *)LAST_ALARM_TIMER);
+	int32_t lastTelemetryUpdate = *((int32_t *)TELEMETRY_UPDATE_TIMER);
+	uint8_t sensorID = 0;
+	uint8_t active = 0, wasAlarm = 0;
+	uint32_t duration = 100;
+	uint32_t defFreq = 100;
+	uint32_t checkTimout = defFreq *10;
+	struct modelConfStruct *configPtr = getModelModConfig();
+	if(timer < duration ) return;
+	if(timer - lastAlarm >= 500){
+		if((uint32_t)configPtr->timerAlarm != 0 && timerValue > (uint32_t)configPtr->timerAlarm) {
+			*((int32_t *)LAST_ALARM_TIMER) = timer;
+			play(BEEP_DEFAULT_FREQ, duration, 50);
+			wasAlarm = 1;
+		}
+		if(timer - lastTelemetryUpdate < checkTimout){
+			for(int i = 0; i < 3; i++){
+				active = 0;
+				sensorID = configPtr->alarm[i].sensorID;
+				if(sensorID == IBUS_MEAS_TYPE_UNKNOWN) continue;
+				int32_t sensorValue = getSensorValue(sensorID, 0, 0);
+				if(sensorID >= IBUS_MEAS_TYPE_GPS_LAT && sensorID <= IBUS_MEAS_TYPE_S8a && sensorValue < SENSORS_ARRAY_LENGTH && sensorValue >= 0){
+					sensorValue = longSensors[sensorValue];
+				}
+				if(configPtr->alarm[i].operator == OPERATOR_GT){
+					if(sensorValue > configPtr->alarm[i].value){
+						active = 1;
+					}
+				}
+				if(configPtr->alarm[i].operator == OPERATOR_LT){
+					if(sensorValue < configPtr->alarm[i].value){
+						active = 1;
+					}
+				}
+				if(active){
+					*((int32_t *)LAST_ALARM_TIMER) = timer;
+					play(BEEP_DEFAULT_FREQ + ((i+1)* defFreq), duration, 40);
+					wasAlarm = 1;
 				}
 			}
-			if(modConfig.alarm[i].operator == OPERATOR_LT){
-				if(sensorValue < modConfig.alarm[i].value){
-					beepCount = i+2;
-					break;
+#if VARIO_TEST_CH6_INSTEAD_OF_SENSOR
+		}
+		if (1) { // ignore the lastTelemetryUpdate
+#endif
+
+			// Vario sound feedback
+			sensorID = configPtr->varioSensorID;
+
+			if (sensorID != IBUS_MEAS_TYPE_UNKNOWN
+				&& timer - varioPrevTime >= 1000
+				&& !wasAlarm) {
+
+#if VARIO_TEST_CH6_INSTEAD_OF_SENSOR
+				int32_t sensorValue = *(((int32_t *)CHANNEL_VALUE)+(5));
+#else
+
+				int32_t sensorValue = (int16_t)getSensorValue(sensorID, 0, 0);
+
+				if ((sensorID == IBUS_MEAS_TYPE_PRES || (sensorID >= IBUS_MEAS_TYPE_GPS_LAT && sensorID <= IBUS_MEAS_TYPE_S8a)) && sensorValue < SENSORS_ARRAY_LENGTH && sensorValue >= 0)
+					sensorValue = longSensors[sensorValue];
+#endif
+
+				varioPrevTime = timer;
+                int32_t diff = sensorValue - varioPrevValue;
+                if(diff < 0) diff *=-1;
+				// be silent when no change
+				if (diff != 0 && diff > configPtr->varioDeadBand) {
+
+					int32_t freq;
+					int8_t gain = configPtr->varioGain;
+
+					freq = sensorValue - varioPrevValue;
+
+					// the range of negative values
+					// is only half of the positive range,
+					// so decrease the gain for them
+					if (freq < 0)
+						gain--;
+
+					if (gain > VARIO_GAIN_OFFSET) {
+						freq <<= gain - VARIO_GAIN_OFFSET;
+					} else {
+						freq >>= VARIO_GAIN_OFFSET - gain;
+					}
+					varioPrevValue = sensorValue;
+					freq += VARIO_BASE_FREQ;
+
+					play(VARIO_BASE_FREQ, 25, 50);
+
+					// keep it inside one octave up/down
+					if (freq < VARIO_BASE_FREQ/2)
+						freq = VARIO_BASE_FREQ/2;
+					else if (freq > 2*VARIO_BASE_FREQ)
+						freq = 2*VARIO_BASE_FREQ;
+
+					play(freq, 50, 50);
 				}
 			}
-
-		 	//modConfig.alarms[i].operator = modConfig.alarm[i].operator;
-		 	//modConfig.alarms[i].sensorID = modConfig.alarm[i].sensorID;
-		 	//modConfig.alarms[i].value = modConfig.alarm[i].value;
-		 }
-	 }
-
-	 if(beepCount > 0 && ((timer - lastAlarm) >= 2000)){
-		 *((int32_t *)LAST_ALARM_TIMER) = timer;
-		 while(beepCount > 0){
-			 beepCount --;
-		 if(someBeepCheck() >= 2){
-			beep(700,100);
-			beep(0,100);
-		 }}
-		//if(someBeepCheck >= 2){
-		//	beep(1000, 350);
-		//	beep(500, 350);
-		//}
-	 }
-
-
-	 CheckAlarmsCall();
- }
+		}
+	}
+	CheckAlarmsCall();
+}
 
 void SwBConfig() {
 	uint32_t key = 0;
@@ -540,12 +750,92 @@ void SwBConfig() {
 
 	if (key == KEY_LONG_CANCEL) {
 		modConfig2.swConfig = swConfig;
-		//saveModSettings();
 	}
 
 }
 
+uint8_t nextSensorID(uint8_t sensorID)
+{
+	sensorID++;
+	if (sensorID == IBUS_MEAS_TYPE_FLIGHT_MODE + 1)
+        sensorID = IBUS_MEAS_TYPE_PRES;
+
+    if (sensorID == IBUS_MEAS_TYPE_PRES + 1)
+		sensorID = IBUS_MEAS_TYPE_ODO1;
+
+    if (sensorID == IBUS_MEAS_TYPE_TX_V + 1)
+    	sensorID = IBUS_MEAS_TYPE_GPS_LAT;
+
+	if (sensorID == IBUS_MEAS_TYPE_S8a + 1)
+		sensorID = IBUS_MEAS_TYPE_SNR;
+
+	return sensorID;
+}
+
+uint8_t prevSensorID(uint8_t sensorID)
+{
+	sensorID--;
+
+	if (sensorID == IBUS_MEAS_TYPE_SNR -1)
+		sensorID = IBUS_MEAS_TYPE_S8a;
+
+	if (sensorID == IBUS_MEAS_TYPE_GPS_LAT -1)
+		sensorID = IBUS_MEAS_TYPE_TX_V;
+
+    if (sensorID == IBUS_MEAS_TYPE_ODO1 -1)
+    	sensorID = IBUS_MEAS_TYPE_PRES;
+
+    if (sensorID == IBUS_MEAS_TYPE_PRES -1)
+        sensorID = IBUS_MEAS_TYPE_FLIGHT_MODE;
+
+	return sensorID;
+}
+
+void ASLConfig(){
+	uint32_t key = 0;
+	uint8_t navPos = 0;
+	int y = 0;
+	uint32_t values[2];
+	char buffer[32];
+	getInitPressure(values, &values[1]);
+	do {
+		callSetupDMAandSend();
+		displayPageHeader((char*)(extraMenu+EXTRA_MENU_ASL)); //ASL
+		//values[0] = aslConfig >> 19;
+		//values[1] = aslConfig & 0x7FFFF;
+		initPressure = values[0];
+		initTemperature = ibusTempToK((int16_t)values[1]);
+		for(uint8_t index = 0; index< 3; index++){
+			y = 16+index*8;
+			displayTextAt((char*)aslLabels[index], 8, y, 0);
+			if(index == 0) sprintfCall(buffer, (const char*) formatNumber, values[0]);
+			if(index == 1) formatSensorValue(buffer, IBUS_MEAS_TYPE_TEM, (uint16_t) (values[1]-400));
+			if(index == 2) formatSensorValue(buffer, IBUS_MEAS_TYPE_ALT, IBUS_MEAS_TYPE_ALT - IBUS_MEAS_TYPE_GPS_LAT);
+			displayTextAt((char*)buffer, 64, y, 0);
+		}
+
+		displayGFX((gfxInfo*) GFX_ARROW, 56, navPos ? 24 : 16);
+		LCD_updateCALL();
+		key = getKeyCode();
+
+		if(key == KEY_SHORT_UP || key == KEY_LONG_UP) values[navPos] +=10;
+		else if(key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) values[navPos] -=10;
+		else if(key == KEY_SHORT_OK) navPos = !navPos;
+		else if(key == KEY_LONG_OK) {
+			values[0] = defASL & 0x7FFFF;
+			values[1] = defASL >> 19;
+		}
+		} while ( key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
+
+		if(key == KEY_LONG_CANCEL){
+			struct modelConfStruct *configPtr = getModelModConfig();
+			configPtr->initAlt = values[0] | (values[1] << 19);
+		}
+}
+
 void AlarmConfig(){
+	struct modelConfStruct *configPtr = getModelModConfig();
+	sensorAlarm alarmItem;
 	sensorAlarm alarms[3];
 	uint32_t row = 0;
 	uint32_t column = 0;
@@ -553,18 +843,15 @@ void AlarmConfig(){
 	uint32_t key = 0;
 	uint16_t step = 1;
 	uint16_t y = 0;
-	sensorAlarm alarmItem;
 	char buffer[32];
-	for(int i = 0; i < 3; i++){
-		alarms[i].operator = modConfig.alarm[i].operator;
-		alarms[i].sensorID = modConfig.alarm[i].sensorID;
-		alarms[i].value = modConfig.alarm[i].value;
-	}
+
+	memcpy_(alarms, configPtr->alarm, sizeof(alarms));
+
 	do{
 		 while ( 1 )
 		 {
 			 callSetupDMAandSend();
-			 displayPageHeader((char*)alarm);
+			 displayPageHeader((char*)extraMenu+EXTRA_MENU_ALARM);
 			 for(int i = 0; i < 3; i++){
 				y = 16+i*8;
 				alarmItem = alarms[i];
@@ -588,7 +875,11 @@ void AlarmConfig(){
 			 key = getKeyCode();
 			 if(key < 20) step =1;
 			 else step = 10;
-			 if(key == KEY_LONG_OK || key == KEY_SHORT_OK ){
+			 if(key == KEY_LONG_OK){
+				alarms[row].sensorID = IBUS_MEAS_TYPE_UNKNOWN;
+				alarms[row].value = 0;
+			 }
+			 else if(key == KEY_SHORT_OK ){
 				 column++;
 				 if(column >= 3) {
 					 column = 0;
@@ -606,17 +897,13 @@ void AlarmConfig(){
 				 }
 				 if(column == 0){
 					 alarms[row].value = 0;
-					 alarms[row].sensorID += 1;
-					 if(alarms[row].sensorID == IBUS_MEAS_TYPE_FLIGHT_MODE + 1) alarms[row].sensorID = IBUS_MEAS_TYPE_GPS_LAT;
-					 if(alarms[row].sensorID == IBUS_MEAS_TYPE_S8a + 1) alarms[row].sensorID = IBUS_MEAS_TYPE_SNR;
+					 alarms[row].sensorID = nextSensorID(alarms[row].sensorID);
 				 }
 			 }
 			 else if(key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) {
 				 if(column == 0){
 					 alarms[row].value = 0;
-					 alarms[row].sensorID -= 1;
-					 if(alarms[row].sensorID == IBUS_MEAS_TYPE_SNR -1) alarms[row].sensorID = IBUS_MEAS_TYPE_S8a;
-					 if(alarms[row].sensorID == IBUS_MEAS_TYPE_GPS_LAT -1) alarms[row].sensorID = IBUS_MEAS_TYPE_FLIGHT_MODE;
+					 alarms[row].sensorID = prevSensorID(alarms[row].sensorID);
 				 }
 				 if(column == 2){
 					 alarms[row].value -= step;
@@ -632,52 +919,50 @@ void AlarmConfig(){
 	while ( key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
 
 	if( key == KEY_LONG_CANCEL) {
-		for(int i = 0; i < 3; i++){
-			modConfig.alarm[i].operator = alarms[i].operator;
-			modConfig.alarm[i].sensorID = alarms[i].sensorID;
-			modConfig.alarm[i].value = alarms[i].value;
-		}
-		saveModSettings();
+		memcpy_(configPtr->alarm, alarms, sizeof(alarms));
 	}
 
 }
 
 
 void TimerConfig(){
-	uint16_t data[3];
-	uint16_t max[3];
-	data[0] = (uint16_t) modConfig.timerCH;
-	data[1] = modConfig.timerStart;
-	data[2] = modConfig.timerAlarm;
-	max[0] = 10;
-	max[1] = 2200;
-	max[2] = 0xffff;
+	//{ 10, 2200, 0xffff, 1 };
+	uint16_t data[4];
 	uint32_t h = 0;
 	uint32_t m = 0;
 	uint32_t s = 0;
 	uint8_t navPos = 0;
 	uint32_t key = 0;
 	uint16_t step = 1;
-
+	uint8_t labelPos = 9;
 	char buffer[32];
+	struct modelConfStruct *configPtr = getModelModConfig();
+	data[0] = (uint16_t) configPtr->timerCH & 0xF;
+	data[1] = configPtr->timerStart;
+	data[2] = configPtr->timerAlarm;
+	data[3] = (configPtr->timerCH & (1<<7)) != 0;
 	do
 	 {
 	    while ( 1 )
 	    {
 	      callSetupDMAandSend();
 	      displayPageHeader((char*)TEXT_TIMMER);
-	      displayTextAt((char*)TEXT_CHANNEL, 9, 16,0);
-	      displayTextAt((char*)TEXT_VALUE, 9, 24,0);
-	      displayTextAt((char*)alarm, 9, 32,0);
+	      displayTextAt((char*)TEXT_CHANNEL, labelPos, 16,0);
+	      displayTextAt((char*)TEXT_VALUE, labelPos, 24,0);
+	      displayTextAt((char*)(extraMenu+EXTRA_MENU_ALARM), labelPos, 32,0);
+		  	displayTextAt((char*)TEXT_HOLD, labelPos, 40,0);
 
-	      for(int i = 0; i < 3; i++){
+
+	      for(int i = 0; i < 4; i++){
+			  int yPos = 16 + i*8;
+			  displayTextAt((char*)timerLabels[i], labelPos, yPos,0);
 	    	  sprintfCall(buffer, (const char*) formatNumber, data[i]);
 	    	  if(i==2){
 	    		  h = divMod(data[i], 3600, &m);
 	    		  m = divMod(m, 60, &s);
 	    		  sprintfCall(buffer, (const char*) timerFormat, h,m,s);
 	    	  }
-	    	  displayTextAt(buffer, 64, 16 + i*8,0);
+	    	  displayTextAt(buffer, 64, yPos, 0);
 	      }
 	      displayGFX((gfxInfo*) GFX_ARROW, 1, 16 + navPos*8);
 
@@ -685,18 +970,18 @@ void TimerConfig(){
 	      key = getKeyCode();
 
 	      step = 1;
-	      if(navPos != 0) step = 10;
+	      if(navPos == 1 || navPos ==2) step = 10;
 
 	      if(key == KEY_LONG_OK){
 	    	  data[navPos] = 0;
 	      }
 	      else if(key == KEY_SHORT_OK){
 	    	  navPos++;
-	    	  if(navPos >=3)navPos = 0;
+	    	  if(navPos >=4)navPos = 0;
 	      }
 	      else if(key == KEY_SHORT_UP || key == KEY_LONG_UP){
 	    	  data[navPos] += step;
-	    	  if(data[navPos] >= max[navPos]) data[navPos] = max[navPos];
+	    	  if(data[navPos] >= timerMaxValues[navPos]) data[navPos] = timerMaxValues[navPos];
 	      }
 	      else if(key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) {
 	    	  if(data[navPos] > step) data[navPos] -= step;
@@ -704,33 +989,15 @@ void TimerConfig(){
 	      else  {
 	    	  break;
 	      }
-	      key = someBeepCheck();
-	      if ( key >= 2 )
-	      {
-	        beep(784, 15);
-	        beep(0, 15);
-	      }
 	    }
 	  }
 	  while ( key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
 	  if( key == KEY_LONG_CANCEL) {
-		modConfig.timerCH = (uint8_t) data[0];
-		modConfig.timerStart = data[1];
-		modConfig.timerAlarm = data[2];
-		saveModSettings();
+		configPtr->timerCH = (uint8_t) data[0] | (data[3] << 7);
+		configPtr->timerStart = data[1];
+		configPtr->timerAlarm = data[2];
 	  }
 }
-
-void parseCoord(uint32_t *deg, uint32_t *min, uint32_t *sec, uint32_t *subSec, uint32_t coord)
-{
-	/*uint32_t tmp = 0;
-	*deg = divMod(coord, 10000000, &tmp);
-	coord = tmp * 60;
-	*min = divMod(coord, 10000000, &tmp);
-	coord = tmp * 60;
-	*sec = divMod(coord, 10000000, &tmp);*/
-}
-
 
 
 void formatSensorValue(char* target, int sensorID, uint16_t sensorValue) {
@@ -753,7 +1020,7 @@ void formatSensorValue(char* target, int sensorID, uint16_t sensorValue) {
 		}
 	} else if (sensorID == IBUS_MEAS_TYPE_PRES) {
 		if (sensorValue < SENSORS_ARRAY_LENGTH) result = longSensors[sensorValue];
-
+		sensorInfo |= MUL_100;
 	} else if (sensorID >= IBUS_MEAS_TYPE_GPS_LAT && sensorID <= IBUS_MEAS_TYPE_S8a) {
 		sensorInfo = sensorDesc80[sensorID - IBUS_MEAS_TYPE_GPS_LAT];
 		if (sensorValue < SENSORS_ARRAY_LENGTH) {
@@ -772,6 +1039,11 @@ void formatSensorValue(char* target, int sensorID, uint16_t sensorValue) {
 	if ((sensorInfo & MUL_100) == MUL_100) {
 		format = (const char*) formatNumberFractial;
 		result = divMod(result, 100, &result2);
+	}
+	if ((sensorInfo & MUL_010) == MUL_010) {
+		format = (const char*) formatNumberFractial;
+		result = divMod(result, 10, &result2);
+		result2 = result2*10;
 	}
 
 	if ((sensorInfo & CUS_SENSOR) != CUS_SENSOR) {
@@ -821,8 +1093,37 @@ void formatSensorValue(char* target, int sensorID, uint16_t sensorValue) {
 
 void configurePINS2(){
 	configurePINs();
+#ifdef SWE
 	PORT_SetPinMux(PORTD, 2u, kPORT_MuxAsGpio);
 	GPIOD->PDDR &= ~(1U << 2); //input
+#endif
+
+}
+
+void loadSettings(){
+	loadSettingsFromEeprom();
+	struct modelConfStruct *config;
+	if(modConfig2.versionMagic != VERSION_MAGIC){
+		modConfig2.batteryVoltage = 480;
+		modConfig2.swConfig = 0;
+		modConfig2.versionMagic = VERSION_MAGIC;
+		for(uint8_t model =0; model < TOTAL_MODELS; model++){
+			//set first 50 bytes
+			config = &modConfig2.modelConfig[model];
+			memsetCall(config, 50, 0);
+			config->varioSensorID = IBUS_MEAS_TYPE_UNKNOWN;
+			config->intVoltAdj = config->extVoltAdj = 10000;
+			for(uint8_t mixIndex = 0; mixIndex < 8; mixIndex++){
+					config->mix[mixIndex].min = -100;
+					config->mix[mixIndex].max = 100;
+			}
+			for(uint8_t alarmIndex = 0; alarmIndex < 3; alarmIndex++)
+				config->alarm[alarmIndex].sensorID = IBUS_MEAS_TYPE_UNKNOWN;
+		}
+		saveModelSettingsCall();
+		restartUnit();
+	}
+
 }
 
 //return non 0 when switch MAX value
@@ -910,111 +1211,191 @@ void displaySensors(){
 
 }
 
-uint32_t mulu16(uint32_t x, uint32_t y)
-{
-	uint32_t a = x >> 16;
-	uint32_t b = x & 0xFFFF;
-	uint32_t c = y >> 16;
-	uint32_t d = y & 0xFFFF;
-	return ((d * b) >> 16) + (d * a) + (c * b)  + ((c * a) << 16);
+#define VARIO_MAX_GAIN 	((1 << VARIO_MAX_GAIN_BITS) - 1)
+
+void varioSensorSelect(){
+	uint32_t key = 0;
+    uint8_t row = 0;
+    char buffer[8];
+	struct modelConfStruct *model = getModelModConfig();
+    uint8_t values[3];
+
+    values[0] = model->varioSensorID;
+    values[1] = model->varioGain;
+    values[2] = model->varioDeadBand;
+
+	do {
+		callSetupDMAandSend();
+		displayPageHeader((char*)varioSensor);
+
+
+		displayTextAt((char*)SOURCE_STRING, 8, 24, 0);
+        displayTextAt((char*)(varioSensor + GAIN_OFFSET), 8, 36, 0);
+        displayTextAt((char*)(deadBand), 8, 48, 0);
+
+		displayTextAt((char*)getSensorName(values[0]), 80, 24, 0);
+		sprintfCall(buffer, (const char*) formatNumber, values[1]);
+		displayTextAt(buffer, 80, 36, 0);
+        sprintfCall(buffer, (const char*) formatNumber, values[2]);
+		displayTextAt(buffer, 80, 48, 0);
+
+		displayGFX((gfxInfo*) GFX_ARROW, 64, (row * 12) + 24);
+
+		LCD_updateCALL();
+
+		key = getKeyCode();
+
+		if (key == KEY_LONG_CANCEL) { // Save it
+			model->varioSensorID = values[0];
+			model->varioGain = values[1];
+            model->varioDeadBand = values[2];
+		}
+
+		if (key == KEY_SHORT_OK){
+            row += 1;
+            if(row == 3) row = 0;
+        }
+
+
+		if (key == KEY_SHORT_UP || key == KEY_LONG_UP) {
+			if (row == 0) values[0] = nextSensorID(values[0]);
+            else if (row == 1 && values[1] < VARIO_MAX_GAIN) values[1]++;
+			else values[2]++;
+		}
+
+		if (key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) {
+            if (row == 0) values[0] = prevSensorID(values[0]);
+            else if (row == 1 && values[1] > 0) values[1]--;
+            else values[2]--;
+		}
+	} while (key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
 }
 
+void adjustVoltage(uint8_t* sensorArray){
+	struct modelConfStruct *model = getModelModConfig();
+	uint16_t adjVal = 0;
+	if(sensorArray[0] == IBUS_MEAS_TYPE_INTV){
+		adjVal = model->intVoltAdj;
+	}
+	if(sensorArray[0] == IBUS_MEAS_TYPE_EXTV){
+		adjVal = model->extVoltAdj;
+	}
+	if(adjVal == 0 || adjVal == 10000u) return;
+ 	uint16_t value = sensorArray[3] << 8 | sensorArray[2];
+	value = div_1(value * 10000u, adjVal);
+	sensorArray[2] = value & 0xFF;
+	sensorArray[3] = (value & 0xFF00) >> 8;
+}
 
-int32_t log2fix(uint32_t x, size_t precision)
-{
+void adjustVoltageConfig(){
+	uint32_t key = 0;
+	struct modelConfStruct *model = getModelModConfig();
+	uint16_t intVolt = model->intVoltAdj;
+	uint16_t extVolt = model->extVoltAdj;
+
+	uint16_t* adjValue = &(model->intVoltAdj);
+	uint8_t index = 0;
+	int32_t value = 0;
+	char buffer[32];
+
+	do {
+	callSetupDMAandSend();
+	displayPageHeader((char*)0xDBA1);
+	uint8_t sensor = 0;
+	uint8_t yPos = 0;
+	for(uint8_t sensorIndex = 0; sensorIndex < 2; sensorIndex++){
+		sensor = voltageSensors[sensorIndex];
+		yPos = sensorIndex? 36 : 24;
+		displayTextAt((char*)getSensorName(sensor), 16, yPos, 0);
+		value = (uint16_t)getSensorValue(sensor, 0,0);
+		if(value != 0x8000){
+			formatSensorValue(buffer, sensor, value);
+			displayTextAt((char*)buffer, 56, yPos,0);
+		}
+	}
+	displayGFX((gfxInfo*) GFX_ARROW, 8, index ? 36 : 24);
+	LCD_updateCALL();
+	key = getKeyCode();
+	if(key == KEY_SHORT_UP || key == KEY_LONG_UP) adjValue[index] -=10;
+	if(key == KEY_SHORT_DOWN || key == KEY_LONG_DOWN) adjValue[index] +=10;
+	else if(key == KEY_SHORT_OK) index = !index;
+	else if(key == KEY_LONG_OK) adjValue[index] = 10000;
+	} while ( key != KEY_LONG_CANCEL && key != KEY_SHORT_CANCEL);
+
+	if(key != KEY_LONG_CANCEL){
+		model->intVoltAdj = intVolt;
+		model->extVoltAdj = extVolt;
+	}
+}
+
+void getInitPressure(uint32_t* pressure, int32_t* temperature){
+	struct modelConfStruct *configPtr = getModelModConfig();
+	*pressure = configPtr->initAlt & 0x7FFFF;
+	*temperature = configPtr->initAlt >> 19;
+}
+
+uint16_t ibusTempToK(int16_t tempertureIbus){
+	return (uint16_t)(tempertureIbus - 400) + 2731;
+}
+
+int32_t log2fix(uint32_t x){
 	int32_t b = 1U << (precision - 1);
 	int32_t y = 0;
-
-	if (precision < 1 || precision > 31) return INT32_MAX; // indicates an error
-	if (x == 0)	return INT32_MIN; // represents negative infinity
-
 	while (x < 1U << precision) {
-		x <<= 1;
-		y -= 1U << precision;
+			x <<= 1;
+			y -= 1U << precision;
 	}
 
 	while (x >= 2U << precision) {
-		x >>= 1;
-		y += 1U << precision;
+			x >>= 1;
+			y += 1U << precision;
 	}
 
-	uint32_t z = x;
-
+	uint64_t z = x;
 	for (size_t i = 0; i < precision; i++) {
-		z = z * z >> precision;
-		if (z >= 2U << precision) {
-			z >>= 1;
-			y += b;
-		}
-		b >>= 1;
+			z = __mul64(z, z) >> precision;
+			if (z >= 2U << precision) {
+					z >>= 1;
+					y += b;
+			}
+			b >>= 1;
 	}
-
 	return y;
 }
 
-int32_t logfix(uint32_t x, size_t precision)
-{
-	uint32_t tmp;
-	int32_t logResult = log2fix(x, precision);
-	uint8_t negative = 0;
 
-	if (logResult < 0) {
-		negative = 1;
-		logResult = -1;
-	}
-	tmp = mulu16(logResult, INV_LOG2_E_Q1DOT31);
-	tmp = (tmp >> 15);
+int getALT(uint32_t pressurePa, uint16_t tempertureIbus){
+		if(pressurePa == 0) return 0;
+    uint16_t temperatureK = ibusTempToK(tempertureIbus);
+    if (initPressure <= 0) {
+			getInitPressure(&initPressure, &initTemperature);
+			initTemperature = ibusTempToK(initTemperature);
+    }
+    int temperature = (initTemperature + temperatureK) >> 1; //div 2
+    bool tempNegative = temperature < 0;
+    if (tempNegative)  temperature = temperature *-1;
+    uint64_t helper = R_DIV_G_MUL_10_Q15;
+    helper = __mul64(helper, (uint64_t)temperature);
+    helper = helper >> precision;
 
-	if (negative) {
-		return (-1) * tmp;
-	}
-	return (int32_t)tmp;
+		//div seems to take integers and return integers?!
+		//so can not shift by precision because it will result in negative number
+
+		uint32_t po_to_p = (uint32_t)(initPressure << (precision-1));
+		po_to_p = div_(po_to_p, pressurePa);
+		//shift missing bit
+		po_to_p = po_to_p << 1;
+		if(po_to_p == 0) return 0;
+		uint64_t t =  __mul64(log2fix(po_to_p), INV_LOG2_E_Q1DOT31);
+		int32_t ln = t >> 31;
+    bool neg = ln < 0;
+    if (neg) ln = ln * -1;
+    helper = __mul64(helper, (uint64_t)ln);
+    helper = helper >> precision;
+    int result = (int)helper;
+
+    if (neg ^ tempNegative) result = result * -1;
+    return result;
 }
 
-void init(uint32_t pressure) {
-	//constVal = mul(/*R_div_g*/ R_div_g_19_13, /*Tmp_24C*/ Tmp_24C_19_13, PRECISION);
-	//constVal = R_div_G_MUL_AVG_TEMP_19_13;
-	constVal = R_div_G_MUL_AVG_TEMP_19_13_8_C;
-	initPressure = FIXED(pressure);
-	initPressureRaw = pressure;
-}
-
-int16_t getALT(uint32_t pressure) {
-	if(pressure == 0) return 0;
-
-	if (initPressure == 0) {
-		init(pressure);
-	}
-
-	uint32_t tmp = FIXED(pressure);
-	uint8_t negative = 0;
-	if (initPressureRaw > pressure) {
-		//val is already shifted by PRECISION
-		tmp =  div_(initPressure,pressure);
-		//tmp = (int32_t)(((int64_t)initPressure << PRECISION) / ((int64_t)tmp));
-	}
-	else {
-		tmp = div_(tmp, initPressureRaw);
-		//tmp = (int32_t)(((int64_t)tmp << PRECISION) / ((int64_t)initPressure));
-		negative = 1;
-	}
-	tmp = logfix(tmp, PRECISION);
-	uint32_t res = mulu16(tmp, constVal);
-
-	//real CD3260DD
-	//this result CD32
-	if (PRECISION < 16) {
-		res = res << (16 - PRECISION);
-	}
-	else if (PRECISION > 16) {
-	//	res =  res >> (PRECISION - 16);
-	}
-	//rounding
-	//res = res + ((res & 1 << (PRECISION - 1)) << 1);
-	int16_t h = res >> PRECISION;
-
-	if (negative) h = -h;
-	return h;
-}
 #pragma GCC optimize ("O1")
-

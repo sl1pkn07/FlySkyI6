@@ -53,16 +53,27 @@
 #include "alt.h"
 #include "ibustelemetry.h"
 
+//#define SILENT
 
-/*
- *
-typedef uint32_t (*divFun)(uint32_t, uint32_t);
-typedef int (*sprintfFun)(char* buffer, const char* format, ...);
-
-const sprintfFun sprintfCall = (sprintfFun) 0x19F8;
-*/
+extern void __call_configurePins_ASM();
+extern void __call_extraChannels_ASM();
+extern void __call_swE_ASM();
+extern void __call_swB_ASM();
+extern void __call_displaySensors1_ASM();
+extern void __call_displaySensors2_ASM();
+extern void __call_parseAcFrame_ASM();
+extern void __call_getSensorName_ASM();
+extern void __call_getSensorName2_ASM();
+extern void __call_printTimer_ASM();
+extern void __call_printTimer1_ASM();
+extern void __call_printTimer2_ASM();
+extern void __call_formatSensorValue_ASM();
+extern void __call_formatSensorValue2_ASM();
+extern void __call_loadSettings_ASM();
+extern void __call_CreatePacket1_ASM();
+extern void __call_CreatePacket2_ASM();
+extern void __call_voltTelemetry_ASM();
 char buffer[32];
-
 
 int main(void) {
   BOARD_InitPins();
@@ -78,65 +89,96 @@ int main(void) {
   (*(uint32_t *)(MODEL_SETTINGS)) = 0x200002AE;
   unsigned char* buf = 0;
   getSensorName(2);
-  loadModSettings();
-  saveModSettings();
+  //loadModSettings();
+  //saveModSettings();
+  getModelModConfig();
   printTimer();
-  if( strLenCall((const char*)RADIO_MODES)){
-	  init(10000);
-	   getALT(10000);
-	   acData(buf);
-  }
+  #ifdef TGY_CAT01
+  getALT(10000, 600);
+  ASLConfig();
+  #endif
   acData(buf);
   getAuxChannel(0);
-  //if( strLenCall((const char*)&modConfig)){
-
-	  getALT(10000);
- //}
- // if( strLenCall((const char*)longSensors)){
-
-	  getALT(10000);
-
-//   }
-//  if( strLenCall((const char*)timerBuffer)){
-	  getALT(10000);
-	  //timerVal +=1;
-//  }
   displayMenu();
   TimerConfig();
   BatteryType();
   SwBConfig();
   createPacketCh1114();
+  mixConfig();
+  mix(10000, 100,100,0);
+  __call_configurePins_ASM();
+  __call_extraChannels_ASM();
+  __call_swE_ASM();
+  __call_swB_ASM();
+  __call_displaySensors1_ASM();
+  __call_displaySensors2_ASM();
+  __call_parseAcFrame_ASM();
+  __call_getSensorName_ASM();
+  __call_getSensorName2_ASM();
+  __call_printTimer_ASM();
+  __call_printTimer1_ASM();
+  __call_printTimer2_ASM();
+  __call_formatSensorValue_ASM();
+  __call_formatSensorValue2_ASM();
+  __call_loadSettings_ASM();
+  __call_CreatePacket1_ASM();
+  __call_CreatePacket2_ASM();
+  __call_voltTelemetry_ASM();
   configurePINS2();
-  strLenCall((const char*)txBat);
-  strLenCall((const char*)altSensor);
+  CheckCustomAlarms();
+  adjustVoltageConfig();
+  //keep few regions
+  if(keep1==0){keep1++;}
+  if(keep2==0){keep2++;}
+  if(keep3==0){keep3++;}
+  if(keep4==0){keep4++;}
+  if(keep5==0){keep5++;}
+  if(keep6==0){keep6++;}
+  if(keep7==0){keep7++;}
+  if(keep8==0){keep8++;}
+  if(keep9==0){keep9++;}
+  if(keep10==0){keep10++;}
+  if(keep11==0){keep11++;}
+  if(keep12==0){keep12++;}
+  if(keep13==0){keep13++;}
 
-  ChackCustomAlarms();
 
-//strLenCall((const char*)extraMenu);
-//strLenCall((const char*)alarm);
-//strLenCall((const char*)timerValueStr);
-//strLenCall((const char*)timerChannel);
-//strLenCall((const char*)timerStartWhen);
-//strLenCall((const char*)timerOff);
-//strLenCall((const char*)timer);
-//strLenCall((const char*)timerNull);
-//strLenCall((const char*)timerFormat);
+  if(txVoltageAddress==0){txVoltageAddress++;}
+  if(timerBufferAddress==0){timerBufferAddress++;}
+  if(timerValueAddress==0){timerValueAddress++;}
+  if(mainScreenIndexAddress==0){mainScreenIndexAddress++;}
+  if(extraMenuAddress==0){extraMenuAddress++;}
+  if(extraMenuText==0){extraMenuText++;}
+  if(voltAdjText==0){voltAdjText++;}
+  if(voltAdjAddr==0){voltAdjAddr++;}
+
+
+  if(keepChecksum == 0){keepChecksum++;}
   //keep this one because of without usage signature block will be removed
   if(SIGNATURE[0] == 1){
-
   }
+
+  #ifdef SILENT
+  beepSilent();
+  #endif
+  adjustVoltage((char *)mod_version);
   formatSensorValue((char *)SIGNATURE, 0,0);
+  formatSensorValue((char *)mod_version, 0,0);
   //divFun dev = (divFun)0x1E5E;
   //char* format = "%d";
   //sprintfCall(buffer, format, 0);
   swBasADC();
   swEHandling();
   //uint32_t resutl = dev(100U, 10U);
+  loadSettings();
   displaySensors();
   auxChannelsPage();
   AlarmConfig();
   printTimer(0);
   auxChannels2();
+  mix(10000, -100, 100, 0);
+  //__mul64((long long)1, (long long)2);
+  //log2fix(1,1);
   //rxTest2();
   //initALT(100000);
   uint32_t reminder=0;

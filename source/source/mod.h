@@ -10,9 +10,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "ibustelemetry.h"
-
+#include "alt.h"
 #define SENSORS_PER_PAGE	8
-#define SENSORS_PAGES		4
+#define SENSORS_PAGES		5
 
 #define PRESSURE_OFFSET UINT32_C(136)
 #define ODO1_OFFSET	UINT32_C(144)
@@ -24,6 +24,7 @@
 #define SIGNED__	1 << 6
 #define UNSIGNED	0 << 6
 #define MUL_001		0 << 4
+#define MUL_010		1 << 4
 #define MUL_100		2 << 4
 
 #define UNIT_NONE 	0
@@ -38,100 +39,142 @@
 #define UNIT_KMH	9
 #define UNIT_CM_S	10
 #define UNIT_MAH	11
+#define TEMP_TEXT_OFFSET 5
+#define ALT_TEXT_OFFSET 15
+
+__attribute__((section (".mod_sensors00"))) const uint8_t SENSOR_00[] =
+/* 5-byte NULL-terminated strings. The last one has implicit NULL added
+/*00@0*/	"IntV\0"
+/*01@5*/	"Temp\0"
+/*02@10*/	"Mot\0\0"
+/*03@15*/	"ExtV\0"
+/*04@20*/	"Cell\0"
+/*05@25*/	"Curr\0"
+/*06@30*/	"Fuel\0"
+/*07@35*/	"RPM\0\0"
+/*08@40*/	"Head\0"
+/*09@45*/	"RoC\0\0"
+/*10@50*/	"CoG\0\0"
+/*11@55*/	"GPS\0\0"
+/*12@60*/	"AccX\0"
+/*13@65*/	"AccY\0"
+/*14@70*/	"AccZ\0"
+/*15@75*/	"Roll\0"
+/*16@80*/	"Pit.\0"
+/*17@85*/	"Yaw\0\0"
+/*18@90*/	"VSpe\0"
+/*19@95*/	"GSpe\0"
+/*20@100*/	"Dist\0"
+/*21@105*/	"Arm.\0"
+/*22@110*/	"Mode"	// The last one without \0
+;
 
 
-const uint8_t __attribute__((section (".s_sensors00"))) SENSOR_00[] = {
-/*00@0*/		'I', 'n', 't', 'V', '\0',
-/*01@5*/		'T', 'e', 'm', 'p', '\0',
-/*02@10*/		'M', 'o', 't', '\0','\0',
-/*03@15*/		'E', 'x', 't', 'V', '\0',
-/*04@20*/		'C', 'e', 'l', 'l', '\0',
-/*05@25*/		'C', 'u', 'r', '\0','\0',
-/*06@30*/		'F', 'u', 'e', 'l', '\0',
-/*07@35*/		'R', 'P', 'M', '\0','\0',
-/*08@40*/		'H', 'd', 'g', '\0','\0',
-/*09@45*/		'R', 'o', 'C', '\0','\0',	//Climb... ->RoC
-/*10@50*/		'C', 'o', 'G', '\0','\0',
-/*11@55*/		'G', 'P', 'S', '\0','\0',
-/*12@60*/		'A', 'c', 'c', 'X', '\0',
-/*13@65*/		'A', 'c', 'c', 'Y', '\0',
-/*14@70*/		'A', 'c', 'c', 'Z', '\0',
-/*15@75*/		'R', 'o', 'l', 'l', '\0',
-/*16@80*/		'P', 'i', 't', '.', '\0',
-/*17@85*/		'Y', 'a', 'w','\0', '\0',
-/*18@90*/		'V', 'S', 'p', 'e', '\0',
-/*19@95*/		'G', 'S', 'p', 'e', '\0',
-/*20@100*/		'D', 'i', 's', 't', '\0',
-/*21@105*/		'A', 'r', 'm', '.', '\0',
-/*22@110*/		'M', 'o', 'd', 'e', '\0',
+__attribute__((section (".mod_sensors41"))) const uint8_t SENSOR_41[] =
+/*41@0*/	"Press.\0"; // another \0 added by compiler
+;
 
+__attribute__((section (".mod_sensors7d"))) const uint8_t SENSORS_7D[] =
+/*7c@0*/	"Odo1\0"
+/*7d@5*/	"Odo2\0"
+/*7e@10*/	"Spe \0"
+/*7f@15*/	"Tx V" // The last one without \0
+;
 
-};
-const uint8_t __attribute__((section (".s_sensors41"))) SENSOR_41[] = {
-/*41@0*/		'P', 'r', 'e', 's', 's', '.', 0x00, 0x00
-};
+__attribute__((section (".mod_sensors80"))) const uint8_t SENSORS_80[] =
+		"Lat\0\0" /*0x80*/
+		"Lon\0\0" /*0x81*/
+		"GAlt\0"  /*0x82*/
+		"Alt\0\0" /*0x83*/
+		"MxAl\0"  /*0x84*/
+		"S85\0\0" /*0x85*/
+		"S86\0\0" /*0x86*/
+		"S87\0\0" /*0x87*/
+		"S88\0\0" /*0x88*/
+		"S89\0\0" /*0x89*/
+		"S90\0"   /*0x8a; the last one without \0*/
+;
 
-const uint8_t __attribute__((section (".s_sensors7d"))) SENSORS_7D[] = {
-/*7c@0*/		'O', 'd','o', '1', '\0',			//Odo1....
-/*7d@5*/		'O', 'd','o', '2', '\0',			//Odo2....
-/*7e@10*/		'S', 'p','e', ' ', '\0',			// Spe....
-/*7f@15*/		'T', 'x', ' ', 'V', '\0',			//Tx V....
-};
-
-const uint8_t __attribute__((section (".s_sensors80"))) SENSORS_80[] = {
-			'L', 'a', 't', 0x0, 0x0, /*0x80*/
-			'L', 'o', 'n', 0x0, 0x0, /*0x81*/
-			'G', 'A', 'l', 't', 0x0, /*0x82*/
-			'A', 'l', 't', 0x0, 0x0, /*0x83*/
-			'S', '8', '4', 0x0, 0x0, /*0x84*/
-			'S', '8', '5', 0x0, 0x0, /*0x85*/
-			'S', '8', '6', 0x0, 0x0, /*0x86*/
-			'S', '8', '7', 0x0, 0x0, /*0x87*/
-			'S', '8', '8', 0x0, 0x0, /*0x88*/
-			'S', '8', '9', 0x0, 0x0, /*0x89*/
-			'S', '9', '0', 0x0, 0x0, /*0x8a*/
-};
-
-
-const uint8_t __attribute__((section (".s_sensorsFA"))) SENSORS_FA[] = {
-			'S', 'N', 'R', 0x0, 0x0,
-			'N', 'o', 'i', '.', 0x0,
-			'R', 'S', 'S', 'I', 0x0,
-			'S', ' ', 'F', 'D', 0x0,
-			'E', 'r', 'r', '.', 0x0,
-			'N', 'o', 'n', 'e', 0x0,
-};
-
-const uint8_t __attribute__((section (".s_unknownSensor"))) UNKNOWN_SENSOR[] = {
-			'U', 'n', 'k', 'n', 'o', 'w', 'n', 0x0,
-};
-
-const uint8_t __attribute__((section (".s_radioModes"))) RADIO_MODES[] = {
-	'I', 'B', 'U', 'S', '/', 'P', 'W', 'M', 0x00,						//IBUS/PWM.
-	'I', 'B', 'U', 'S', '/', 'P', 'P', 'M', 0x00,						//IBUS/PPM.
-	'S', 'B', 'U', 'S', '/', 'P', 'W', 'M', 0x00,						//SBUS/PWM
-	'S', 'B', 'U', 'S', '/', 'P', 'P', 'M', 0x00,						//SBUS/PPM
+const uint8_t __attribute__((section (".mod_auxChannelsText"))) auxSW[] = {
+	"SwA+B\0"
+	"SwB+C\0"
+	"SwC+D\0"
+	"SNR  \0"
+	"Error\0"
+	"PPM 1\0"
+	"PPM 2\0"
+	"PPM 3\0"
+	"SwE  "
 };
 
-const uint8_t __attribute__((section (".s_armed"))) ARMED[] = {0x41, 0x72, 0x6d, 0x65, 0x64}; //Armed
+__attribute__((section (".mod_sensorsFA"))) const uint8_t SENSORS_FA[] =
+		"SNR\0\0"
+		"Noi.\0"
+		"RSSI\0"
+		"S FD\0"
+		"Err.\0"
+		"None"	// The last one without \0
+;
 
-const uint8_t __attribute__((section (".s_flyModesOffset"))) flyModesOffset[] = {
+__attribute__((section (".mod_unknownSensor"))) const uint8_t UNKNOWN_SENSOR[]
+	= "Unknown";
+
+/////////////////////////////////////////
+//never change - referenced from assembly
+/////////////////////////////////////////
+__attribute__((section (".mod_radioModes"))) const uint8_t RADIO_MODES[] =
+	"IBUS/PWM\0"
+	"IBUS/PPM\0"
+	"SBUS/PWM\0"
+	"SBUS/PPM"	// The last one without \0
+;
+//power gain << 10
+//from 0 dB -20dB
+
+const uint16_t __attribute__((section (".mod_SNR"))) snrMulti[] = {
+		1024,
+		813,
+		646,
+		513,
+		407,
+		323,
+		257,
+		204,
+		162,
+		128,
+		102,
+		81,
+		64,
+		51,
+		40,
+		32,
+		25,
+		20,
+		16,
+		12,
+		10,
+} ;
+
+const uint8_t __attribute__((section (".mod_voltSensors"))) voltageSensors[] = { IBUS_MEAS_TYPE_INTV, IBUS_MEAS_TYPE_EXTV} ;
+const uint8_t __attribute__((section (".mod_armed"))) ARMED[] = "Armed";
+
+const uint8_t __attribute__((section (".mod_flyModesOffset"))) flyModesOffset[] = {
 	0, 5, 10, 16, 21, 28, 35, 39, 46, 52
 };
-const uint8_t __attribute__((section (".s_flyModes"))) FLY_MODES[] = {
-	/*0@00*/ 0x53, 0x74, 0x61, 0x62, 0x00,						//stab
-	/*1@05*/ 0x41, 0x63, 0x72, 0x6F, 0x00, 						//acro
-	/*2@10*/ 0x41, 0x48, 0x6F, 0x6C, 0x64, 0x00, 				//AHold
-	/*3@16*/ 0x41, 0x75, 0x74, 0x6F, 0x00, 						//Auto
-	/*4@21*/ 0x47, 0x75, 0x69, 0x64, 0x65, 0x64, 0x00, 			//Guided
-	/*5@28*/ 0x4C, 0x6F, 0x69, 0x74, 0x65, 0x72, 0x00, 			//Loiter
-	/*6@35*/ 0x52, 0x54, 0x4C, 0x00,							//RTL
-	/*7@39*/ 0x43, 0x69, 0x72, 0x63, 0x6C, 0x65, 0x00, 			//Circle
-	/*8@46*/ 0x50, 0x48, 0x6F, 0x6C, 0x64, 0x00, 				//PHold
-	/*9@52*/ 0x4C, 0x61, 0x6E, 0x64, 0x00, 						//Land
+const uint8_t __attribute__((section (".mod_flyModes"))) FLY_MODES[] = {
+	/*0@00*/ "Stab\0"
+	/*1@05*/ "Acro\0"
+	/*2@10*/ "AHold\0"
+	/*3@16*/ "Auto\0"
+	/*4@21*/ "Guided\0"
+	/*5@28*/ "Loiter\0"
+	/*6@35*/ "RTL\0"
+	/*7@39*/ "Circle\0"
+	/*8@46*/ "PHold\0"
+	/*9@52*/ "Land"
 };
 
-const uint8_t __attribute__((section (".s_sensorsScreens"))) sensorsScreens[] = {
+const uint8_t __attribute__((section (".mod_sensorsScreens"))) sensorsScreens[] = {
 	IBUS_MEAS_TYPE_FLIGHT_MODE,
 	IBUS_MEAS_TYPE_ARMED,
 	IBUS_MEAS_TYPE_ERR,
@@ -166,29 +209,56 @@ const uint8_t __attribute__((section (".s_sensorsScreens"))) sensorsScreens[] = 
 	IBUS_MEAS_TYPE_GROUND_SPEED,
 	IBUS_MEAS_TYPE_VERTICAL_SPEED,
 	IBUS_MEAS_TYPE_CLIMB_RATE,
-	IBUS_MEAS_TYPE_RPM
+	IBUS_MEAS_TYPE_RPM,
+
+	IBUS_MEAS_TYPE_ALT_MAX,
+	IBUS_MEAS_TYPE_S85,
+	IBUS_MEAS_TYPE_S86,
+	IBUS_MEAS_TYPE_S87,
+	IBUS_MEAS_TYPE_S88,
+	IBUS_MEAS_TYPE_S89,
+	IBUS_MEAS_TYPE_S8a,
+	IBUS_MEAS_TYPE_UNKNOWN
+
 };
-const uint8_t __attribute__((section (".s_timerFormat"))) timerFormat[] = {
-		'%', '0', '2', 'u', ':', '%', '0', '2', 'u', ':', '%', '0', '2', 'u',  0x00
+const uint8_t __attribute__((section (".mod_timerFormat"))) timerFormat[] =
+	"%02u:%02u:%02u";
+const uint8_t __attribute__((section (".mod_timerNull"))) timerNull[] =
+	"00:00:00";
+
+
+#define GAIN_OFFSET 6
+
+const uint8_t __attribute__((section (".mod_varioStrings"))) varioSensor[] = {
+		"Vario\0"
+		"Gain"
 };
-const uint8_t __attribute__((section (".s_timerNull"))) timerNull[] = {
-		'0', '0', ':', '0', '0', ':', '0', '0', 0x00
+const uint8_t __attribute__((section (".mod_dead"))) deadBand[] =
+	"Dead";
+
+#define EXTRA_MENU_TXBAT 6
+#define EXTRA_MENU_ALARM 13
+#define EXTRA_MENU_ASL 19
+
+
+#define EXTRA_MENU_ITEMS 7
+
+const uint8_t __attribute__((section (".mod_extraMenu"))) extraMenu[] = {
+		"Extra\0"
+		"Tx Bat\0"
+		"Alarm\0"
+		"ASL"
 };
-const uint8_t __attribute__((section (".s_alarm"))) alarm[] = {
-		'A', 'l', 'a', 'r', 'm',  0x00
-};
-const uint8_t __attribute__((section (".s_extraMenu"))) extraMenu[] = {
-		'E', 'x', 't', 'r', 'a',  0x00
-};
-const uint8_t __attribute__((section (".s_swbMenu"))) altSensor[] = {
-		'N', 'o', 't', ' ', 'S', 'e', 't',  0x00
-};
-const uint8_t __attribute__((section (".s_txBat"))) txBat[] = {
-		'T', 'X', ' ', 'B', 'a', 't',  0x00
-};
+
 //contains pointers to functions!!!
-const uint32_t __attribute__((section (".s_modMenuList"))) menuList[] = {
-	TEXT_TIMMER, 0xFDE9, 0xFF98, 0xFC01,  0xf63e, 0xE571, 0xFFA8, 0xf821, 0xcc5a, 0xE401
+const uint32_t __attribute__((section (".mod_extraMenu"))) menuList[] = {
+	TEXT_TIMMER, (uint32_t)(&TimerConfig+1),
+	(uint32_t)(extraMenu+EXTRA_MENU_ALARM), (uint32_t)(&AlarmConfig+1),
+	(uint32_t)(auxSW + 6), (uint32_t)(&SwBConfig+1),
+	(uint32_t)(extraMenu+EXTRA_MENU_TXBAT), (uint32_t)(&BatteryType+1),
+	(uint32_t)&varioSensor, (uint32_t)(&varioSensorSelect+1),
+	(uint32_t)(extraMenu+EXTRA_MENU_ASL), (uint32_t)(&ASLConfig+1),
+	(uint32_t)TEXT_END_POINTS, (uint32_t)(&mixConfig+1),
 };
 
 
@@ -200,9 +270,9 @@ MM mulitplayed by 00=1 10=100
 UUUU UNIT
  * */
 
-const uint8_t __attribute__((section (".s_sensDesc00"))) sensorDesc00[] = {
+const uint8_t __attribute__((section (".mod_sensDesc00"))) sensorDesc00[] = {
 /*00*/	STD_SENSOR|UNSIGNED|MUL_100|UNIT_V,		//IntV
-/*01*/	STD_SENSOR|SIGNED__|MUL_001|UNIT_DEG, 	//Temp
+/*01*/	STD_SENSOR|SIGNED__|MUL_010|UNIT_DEG, 	//Temp
 /*02*/	STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE, 	//Mot
 /*03*/	STD_SENSOR|UNSIGNED|MUL_100|UNIT_V,		//ExtV
 /*04*/	STD_SENSOR|UNSIGNED|MUL_100|UNIT_V,		//Cell
@@ -227,21 +297,21 @@ const uint8_t __attribute__((section (".s_sensDesc00"))) sensorDesc00[] = {
 };
 //0x41 is custom
 
-const uint8_t __attribute__((section (".s_sensDesc80"))) sensorDesc80[] = {
+const uint8_t __attribute__((section (".mod_sensDesc80"))) sensorDesc80[] = {
 		CUS_SENSOR|SIGNED__|MUL_001|UNIT_NONE,	//Lat.
 		CUS_SENSOR|SIGNED__|MUL_001|UNIT_NONE,	//Lon.
 		STD_SENSOR|SIGNED__|MUL_100|UNIT_M,		//Alt -> GPS alt
 		STD_SENSOR|SIGNED__|MUL_100|UNIT_M,		//ALT
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s84
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s85
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s86
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s87
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s88
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s89
-		STD_SENSOR|SIGNED__|MUL_100|UNIT_NONE,	//s89
+		STD_SENSOR|SIGNED__|MUL_100|UNIT_M,	//Max Alt
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s85
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s86
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s87
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s88
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s89
+		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//s89
 };
 
-const uint8_t __attribute__((section (".s_sensDescFA"))) sensorDescFA[] = {
+const uint8_t __attribute__((section (".mod_sensDescFA"))) sensorDescFA[] = {
 		STD_SENSOR|UNSIGNED|MUL_001|UNIT_DB,	//SNR
 		STD_SENSOR|UNSIGNED|MUL_001|UNIT_DBM,	//Noise
 		STD_SENSOR|UNSIGNED|MUL_001|UNIT_DBM,	//RSSI
@@ -250,25 +320,25 @@ const uint8_t __attribute__((section (".s_sensDescFA"))) sensorDescFA[] = {
 		STD_SENSOR|UNSIGNED|MUL_001|UNIT_NONE,	//None
 };
 
-const uint8_t __attribute__((section (".s_foramtCoord"))) formatCoord[] = { '%', 'u', '.', '%', '0', '6', 'u', 0x7f, 0x00};
-const uint8_t __attribute__((section (".s_formatGPS"))) formatGPS[] = {0x25, 0x75, 0x20, 0x25, 0x30, 0x32, 0x75, 0x00};// "%u %02u";
-const uint8_t __attribute__((section (".s_formatNumber"))) formatNumber[] = {0x25, 0x75, 0x00}; //"%u";
-const uint8_t __attribute__((section (".s_formatNumberFractial"))) formatNumberFractial[] = {0x25, 0x75, 0x2e, 0x25, 0x30, 0x32, 0x75, 0x00};// "%u.%02u";
+const uint8_t __attribute__((section (".mod_foramtCoord"))) formatCoord[] = { '%', 'u', '.', '%', '0', '6', 'u', 0x7f, 0x00};
+const uint8_t __attribute__((section (".mod_formatGPS"))) formatGPS[] = "%u %02u";
+const uint8_t __attribute__((section (".mod_formatNumber"))) formatNumber[] = "%u";
+const uint8_t __attribute__((section (".mod_formatNumberFractial"))) formatNumberFractial[] = "%u.%02u";
 
-const uint8_t __attribute__((section (".s_signature"))) SIGNATURE[] = {
+const uint8_t __attribute__((section (".mod_signature"))) SIGNATURE[] = {
 		0xCC, 0x51 , 0x72, 0xC8, 0xA0, 0x7E, 0x01, 0x92, 0xF0, 0xE7, 0x00, 0x00, 0x0A, 0x00, 0x01, 0x00
 };
 
 
 //if unit > 0 sub 1
-const uint8_t __attribute__((section (".s_unitsOffsets"))) unitsOffsets[] = {
+const uint8_t __attribute__((section (".mod_unitsOffsets"))) unitsOffsets[] = {
 	0, 2, 4, 6, 8, 10, 14, 18, 21, 26, 31
 };
 
 
-const uint8_t __attribute__((section (".s_units"))) units[] = {
+const uint8_t __attribute__((section (".mod_units"))) units[] = {
 	/*1@0*/  'm', 0x00,						//m;
-	/*2@2*/  0x7f, 0x00,					//°
+	/*2@2*/  0x7f, 0x00,					//ï¿½
 	/*3@4*/ 'A', 0x00,						//A
 	/*4@6*/ '%', 0x00,						//%
 	/*5@8*/ 'V', 0x00,						//V
@@ -282,7 +352,25 @@ const uint8_t __attribute__((section (".s_units"))) units[] = {
 
 
 
-__attribute__((section (".s_MOD_SPACE"))) signed int  auxChannelsPage();
+const uint32_t __attribute__((section (".mod_defASL"))) defASL = ((250 + 400) << 19)|101325;
+const uint16_t __attribute__((section (".mod_timerMaxValues"))) timerMaxValues[] = { 10, 2200, 0xffff, 1 };
+const uint32_t __attribute__((section (".mod_timerLabels"))) timerLabels[] = { TEXT_CHANNEL, TEXT_VALUE, (uint32_t)(extraMenu+EXTRA_MENU_ALARM), TEXT_HOLD };
+const uint32_t __attribute__((section (".mod_aslLabels"))) aslLabels[] = { (uint32_t)SENSOR_41, (uint32_t)(SENSOR_00 + TEMP_TEXT_OFFSET), (uint32_t)(SENSORS_80 +ALT_TEXT_OFFSET)};
+const uint8_t  __attribute__((section (".mixPos"))) mixPos[] = { 0, 48, 80 };
+
+
+const uint8_t  __attribute__((section (".mod_version"))) mod_version[] = "1.7.5";
+
+uint32_t  __attribute__((section (".mod_tx_voltage_alarm_address"))) txVoltageAddress = (uint32_t)&modConfig2.batteryVoltage;
+uint32_t  __attribute__((section (".mod_mainScreenIndexAddress"))) mainScreenIndexAddress = (uint32_t)&mainScreenIndex;
+uint32_t  __attribute__((section (".mod_timerValueAddress"))) timerValueAddress = (uint32_t)&timerValue;
+uint32_t  __attribute__((section (".mod_timerBufferAddress"))) timerBufferAddress = (uint32_t)timerBuffer;
+uint32_t  __attribute__((section (".mod_extra_menu_ptr"))) extraMenuAddress = (uint32_t)(&displayMenu+1);
+uint32_t  __attribute__((section (".mod_extra_menu_str_ptr"))) extraMenuText = (uint32_t)extraMenu;
+uint32_t  __attribute__((section (".mod_rxMenuSpeedDistStr"))) voltAdjText = (uint32_t) TEXT_ADJ;
+uint32_t  __attribute__((section (".mod_rxMenuSpeedDistMethod"))) voltAdjAddr = (uint32_t)(&adjustVoltageConfig+1);
+
+__attribute__((section (".notImplemented_AUX_CHANNEL_PAGE"))) signed int  auxChannelsPage();
 
 
 

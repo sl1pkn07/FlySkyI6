@@ -100,254 +100,338 @@ SECTIONS
     KEEP (*(.fini))
     . = ALIGN(4);
   } > m_text
-  
-  
-  .s_FLASH_25C8 0x25C8 :
-{
-	*(.s_sensors00);
-	*(.s_sensors41);
-	*(.s_sensors7d);
-	*(.s_sensors80);
-	*(.s_sensorsFA);
-	*(.s_unknownSensor);
-
-	*(.s_flyModesOffset);
-	*(.s_flyModes);
-	*(.s_armed);
-	*(.s_formatNumberFractial);
-	*(.s_formatNumber);
-	*(.s_formatGPS);		
-	
-	*(.s_FLASH_25C8*);
-}
 
 
-.s_RadioMOD 0x3194 :
+  .GFX_ARRAY 0x1FFFF8C0 :
+  {
+    *(.screenBuffer);
+  } > m_data
+
+  .MOD_CONFIG2 0x20000B32 :
+  {
+    *(.mod_modConfigAsModel17);
+  }  > m_data
+
+  /*  20000E0C */
+
+  .AUX_MEM 0x20000F4A :
+  {
+    *(.mod_mainScreenIndex)
+    *(.mod_longSensors);
+    *(.mod_mavlinkGPSFrame)
+    *(.mod_timerBuffer);
+    *(.mod_timerValue);
+    *(.mod_ticks100ms);
+    *(.mod_lastTimerUpdate);
+    *(.mod_altSensorMemory);
+    *(.mod_varioMem);
+    *(.mod_maxSNR);
+    *(.mod_altSensorMemory);
+    KEEP(*(.AUX_MEM))
+  } > m_data
+
+
+  /*still some space available*/
+  /*16 bytes*/
+  . = ALIGN(1);
+  .mod_25C8_277F 0x25C8 :
+  {
+	*(.mod_sensors00);
+	*(.mod_sensors41);
+	*(.mod_sensors7d);
+	*(.mod_sensors80);
+	*(.mod_sensorsFA);
+	*(.mod_unknownSensor);
+	*(.mod_flyModesOffset);
+	*(.mod_flyModes);
+	*(.mod_formatNumberFractial);
+	*(.mod_formatNumber);
+	*(.mod_formatGPS);
+	*(.mod_timerMaxValues);
+	*(.mod_timerLabels);
+  *(.mod_foramtCoord);
+  *(.mod_units);
+	*(.mod_unitsOffsets);
+	*(.mod_varioStrings);
+  *(.mod_timerNull);
+  }
+  .mod_SIGNATURE_2780 0x2780 :
+  {
+	*(.mod_signature);
+	*(.mod_SIGNATURE_2780*);
+  }
+
+  /*still some space available*/
+  /*85 bytes*/
+  .mod_2790_27FF 0x2790 :
+  {
+  *(.mod_sensDesc00)
+ 	*(.mod_sensDesc80)
+ 	*(.mod_sensDescFA)
+  *(.mod_sensorsScreens);
+  *(.mod_timerFormat);
+  *(.mod_armed);
+  *(.mod_defASL);
+  *(.mixPos);
+  }
+  .reserved_main 0x2800:
+  {
+    KEEP(*(.reserved_main))
+  }
+
+  .mod_beep_silent 0x9C3C : {
+    *(.mod_beep_silent);
+  }
+
+  /*calls from FW to C code*/
+  .mod_configurePins_ASM 0xC0D2 : {
+    *(.mod_configurePins_ASM);
+  }
+
+  /*
+  FREE SPACE AC34 AC57
+  */
+
+  .mod_extraChannels_ASM 0xAB5C : {
+    *(.mod_extraChannels_ASM);
+  }
+  .reserved_after_code_extraChannels_ASM 0xAB9F : {
+    *(.reserved_after_code_extraChannels_ASM);
+  }
+
+  .mod_swB_ASM 0x2896 : {
+    *(.mod_swB_ASM);
+  }
+  .mod_swE_ASM 0x289A : {
+    *(.mod_swE_ASM);
+  }
+  .mod_displaySensors1_ASM 0xC1D8 : {
+    *(.mod_displaySensors1_ASM);
+  }
+  .mod_displaySensors2_ASM 0xC5C2 : {
+    *(.mod_displaySensors2_ASM);
+  }
+  .mod_parseAcFrame_ASM 0x65AE : {
+    *(.mod_parseAcFrame_ASM);
+  }
+  .mod_getSensorName_ASM 0x2FA0 : {
+    *(.mod_getSensorName_ASM);
+  }
+  .mod_getSensorName2_ASM 0x376A : {
+    *(.mod_getSensorName2_ASM);
+  }
+  .mod_loadSettings_ASM 0xC070 : {
+    *(.mod_loadSettings_ASM);
+  }
+  .mod_printTimer_ASM 0xC1DE : {
+    *(.mod_printTimer_ASM);
+  }
+  .mod_printTimer1_ASM 0xC1F4 : {
+    *(.mod_printTimer1_ASM);
+  }
+  .mod_printTimer2_ASM 0xC5E2 : {
+    *(.mod_printTimer2_ASM);
+  }
+  .mod_formatSensorValue_ASM 0x5418 : {
+    *(.mod_formatSensorValue_ASM);
+  }
+  .mod_formatSensorValue2_ASM 0xC236 : {
+    *(.mod_formatSensorValue2_ASM);
+  }
+
+
+  .mod_callCreatePacket1_ASM 0xA8D2 : {
+    *(.mod_callCreatePacket1_ASM);
+  }
+  .mod_callCreatePacket2_ASM 0xA8E8 : {
+    *(.mod_callCreatePacket2_ASM);
+  }
+
+  /*variables referenced from assembly*/
+
+  .mod_mainScreenIndexAddress 0xC9A0 : {
+    *(.mod_mainScreenIndexAddress);
+  }
+  .mod_timerValueAddress 0xC9A4 : {
+    *(.mod_timerValueAddress);
+  }
+  .mod_timerBufferAddress 0xC9A8 : {
+    *(.mod_timerBufferAddress);
+  }
+  .mod_tx_voltage_alarm_address 0x6344 : {
+    *(.mod_tx_voltage_alarm_address);
+  }
+
+  .mod_extra_menu_str_ptr 0xD4C8 : {
+    *(.mod_extra_menu_str_ptr);
+  }
+  .mod_extra_menu_ptr 0xD4CC : {
+    *(.mod_extra_menu_ptr);
+  }
+  .mod_version 0xEEB5 : {
+    *(.mod_version);
+  }
+
+  /*never change - referenced from assembly*/
+  .mod_radioModes 0x3194 :
+  {
+    *(.mod_radioModes);
+  }
+  .mod_rxMenuSpeedDistStr 0xD2EE :
+  {
+    *(.mod_rxMenuSpeedDistStr);
+    *(.mod_rxMenuSpeedDistMethod);
+  }
+
+
+
+  /*Free space for code*/
+  .mod_code_AC34 0xAC34 : {
+  *(.mod_log2fix);
+  *(.mod_getALT);
+  *(.mod_prevSensorID);
+  *(.mod_dead);
+  }
+  .reserved_after_code_AC34  0xAE44 : {
+  *(.reserved_after_code_AC34);
+  }
+  .mod_code_9A60 0x9A60 :
 {
-	*(.s_radioModes);
-	*(.s_RadioMOD*);
+  *(.mod_asl);
 }
-.s_SIGNATURE_2780 0x2780 :
-{
-	*(.s_signature);
-	*(.s_SIGNATURE_2780*);
+.reserved_after_code_9A60  0x9BC0 : {
+*(.reserved_after_code_9BC0);
 }
-  .s_FLASH_2790 0x2790 :
+
+.mod_code_9830 0x9830 :
 {
-	*(.s_foramtCoord)
-	*(.s_unitsOffsets)
-	*(.s_units)
-	*(.s_sensDesc00)
- 	*(.s_sensDesc80)
- 	*(.s_sensDescFA)
+
+}
+.reserved_after_code_9830  0x9928 : {
+*(.reserved_after_code_9830);
 }
 
 /*
-*(.s_foramtDBm);
-	*(.s_foramtAmp);
-	*(.s_formatNumber);
-	*(.s_formatMsFractial);
-	*(.s_foramtNumFractial);
-	*(.s_foramtAngleFractial);
-	*(.s_foramtAngle);			
-	*(.s_foramtCoord);	
+Seed distnace page menu
+ROM:0000D2A0 stru_D2A0       manuEntry <0xEE3D, 0xAC59> ; DATA XREF: SpeedDistancePage
+ROM:0000D2A8                 manuEntry <0xEE06, 0x9A61>
+ROM:0000D2B0                 manuEntry <0xED92, 0x9831>
+ROM:0000D2B8                 manuEntry <0xEDA2, 0x98AD>
 */
- 
-   .s_MOD_EEPROM 0xC9B0 :
-{
-	*(.s_loadModEeprom);
-	*(.s_saveModEeprom);
-}
 
 
- 
-  .s_AC_SENSOR 0x65C8 :
-{
-	*(.s_parseAC);
-	*(.s_acHelper);
-}
+  /*Free space for code 288 bytes*/
+  .mod_code_5174_5353 0x5174 : {
+    *(.mod_varioSensorSelect);
+    *(.mod_configurePins);
+    *(.mod_SNR);
+
+  }
+  .reserved_after_code_5174_5353 0x5354 : {
+    *(.reserved_after_code_5174_5353);
+  }
+  .mod_595C 0x595C : {
+      *(.mod_voltADJConfig);
+      *(.mod_voltSensors);
+      *(.mod_acHelper);
+      *(.mod_mapSNR);
+      *(.mod_aslLabels);
+  }
+  .reserved_after_code_595C 0x5B28 : {
+    *(.reserved_after_code_595C);
+  }
+
+  .mod_code_65C8_68A7 0x65C8 :
+  {
+    *(.mod_parseAC);
+    *(.mod_displaySensors);
+    *(.mod_loadSettingsExt);
+  }
+  .reserved_after_code_65C8_68A7 0x68A8 : {
+    *(.reserved_after_code_65C8_68A7);
+  }
+
+  .mod_code_in_display_method 0xC256  :
+  {
+     KEEP(*(.mod_code_in_display_method))
+  }
+
+  .reserved_after_code_in_display_method 0xC306  :
+  {
+     KEEP(*(.reserved_after_code_in_display_method))
+  }
+
+  .mod_code_C9B0_CA4F 0xC9B0 :
+  {
+	*(.mod_modelConfig);
+	*(.mod_customAlarmsPlay);
+	*(.mod_nextSensorID);
+	*(.mod_asm_aeabi_lmul);
+  }
+
+  .reserved_after_code_C9B0_CA4F 0xCA50 :
+  {
+	*(.reserved_after_code_C9B0_CA4F);
+  }
+  .mod_code_D510_D5EF 0xD50C :
+  {
+   *(.mod_swBHandling);
+  }
+  .mod_code_D560_D5EF 0xD560 :
+  {
+  *(.mod_swEHandling);
+  *(.mod_checkTimerActive);
+
+  }
+
+  .reserved_after_code_D50C_D5EF 0xD5F0 :
+  {
+	*(.reserved_after_code_D510_D5EF);
+  }
+
  . = ALIGN(4);
- 
-    .s_MOD_CHANNELS_11_14 0xE400 :
-{
-	*(.s_channels1114);
-}
- 
-   .s_MOD_ALARMS 0xE140 :
-{
-	*(.s_customAlarms);
-}
 
-
-	.s_CONFIG_PINS 0xe660 :
+  .mod_code_E140_E754 0xE140 :
   {
- 	 *(.s_configurePins*);
+    *(.mod_customAlarmsCheck);
+    *(.mod_timerConfig);
+    *(.mod_SW_B_config);
+    *(.mod_getSWState);
+    *(.mod_extractConfig);
+    *(.mod_createPacketCh1114);
+    *(.mod_auxChannelsText);
+  }
+  .reserved_after_code_E140_E754 0xE754 :{
+   	 *(.reserved_after_code_E140_E754);
+  }
+  .mod_voltTelemetry_ASM 0x57DA :{
+   	 *(.mod_voltTelemetry_ASM);
+  }
+  .reserved_after_voltTelemetry_ASM 0x57EE :{
+   	 *(.reserved_after_voltTelemetry_ASM);
   }
 
 
-	.s_AUX_CH_SW_STATE 0xE6A0 :
+  .mod_code_F4D0_FF8F 0xF4D0:
   {
- 	 *(.s_getSWState*);
-  }
- 	.s_AUX_CH_SET_VAL 0xE700 :
-  {
- 	 *(.s_createPacketCh1114*);
-  }
-
-
-.s_MOD_SWB 0xE570 :
-{
-	*(.s_SW_B_config);
-}
-
-
-   .s_MOD_SwE 0x52F0 :
-{
-	*(.s_swEHandling);
-}
-
-   .s_MOD_SwbADC 0x5310 :
-{
-	*(.s_swBHandling);
-}
-
- . = ALIGN(1);
-  /*5*128 bytes FREE up to E752*/
-  
-  .FontSmal 0xE471 :
-  {
-    KEEP(*(.FontSmal))
-  } > m_text
-  . = ALIGN(4);
-  
-  
-   . = ALIGN(4);
-  /*method redefinition not needed any more*/
-  
-  .s_displaySmallTextAt 0x5174 :
-  {
-    KEEP(*(.s_displaySmallTextAt))
-  }
-  
-   .s_sensorConst 0x5260 : /*5260 - 533F */
-  {
-	*(.s_sensorsScreens);
-	*(.s_timerOff);
-	*(.s_timerNull);
-	*(.s_timerFormat);
+   *(.mod_channels1114*);
+ 	 *(.mod_getAuxChannel);
+   *(.mod_getSensorName);
+   *(.mod_batteryConfig);
+   *(.mod_printTimer);
+   *(.mod_formatSensorValue);
+   *(.mod_divMod);
+   *(.mod_alarmConfig);
+   *(.mod_timerConfig);
+   *(.mod_modMenuListFun);
+   *(.mod_mix);
+   *(.mod_voltADJ);
+   *(.mod_extraMenu);
   }
 
-
- 
-
-
-.s_extraMenu 0xFF90 : /*FFA0 - FFFF*/ 
-  {
-  	*(.s_extraMenu); 
-  	*(.s_alarm);
-  	*(.s_swbMenu);
-  	*(.s_txBat);
- }
- .s_modMenuFun 0xFFB0 : /*FFC0 - FFFF*/
-  {
-	*(.s_modMenuListFun);
-	*(.s_modMenuList);
+  .reserved_checksum 0xFFFD :{
+   	 *(.reserved_checksum*);
   }
-
-   . = ALIGN(1);
-  
-  .s_FREE_FLASH_65A8_768 0x65A8 : 
-  {
-     KEEP(*(.FREE_FLASH_65A8_768)) /* 65A8 redirect rx packet and add handling for ac sensor main screen goes here */
-  }
-  . = ALIGN(4);
-  .s_SENSORS_MAIN_SCREEN_6704 0x6704 : 
-{
-  *(.s_displaySensors); 
-    KEEP(*(.SENSORS_MAIN_SCREEN_6704))
-}
-   . = ALIGN(4);
-      
-  .TestCODE 0xB600 : /*moved while implementing sensors move it back to s_ALT*/
-  {
-  *(.altmulu16); 
-  *(.altinit);
-  *(.altgetALT);
-  *(.altlogfix);
-  *(.altlog2fix); 
-    KEEP(*(.TestCODE))
-    
-  } > m_text
-  
-  
-  s.FREE_FLASH_C1DC_308 0xC1DC :
-  {
-     KEEP(*(.FREE_FLASH_C1DC_308)) /* there is one jump in the moddle clean it */
-  }
-  
-
-  
-  .s_MOD_SPACE 0xF4D0 :
-  {
- 	 *(.s_MOD_SPACE*);
-  }
-
-   
-   .s_battery 0xF820 :
-  {
-    *(.s_batteryConfig);
-  }   
- 
- 	.s_AUX_CH 0xF66C :
-  {
- 	 *(.s_getAuxChannel*);
-  }
- 
- 
- .s_getSensorName 0xF7B0 : /*f020 - f0b7*/
-  {
-    KEEP(*(.s_getSensorName))
-  }
-  
- 	.s_TIMER_SPACE 0xF8E0 :
-  {
- 	 *(.s_printTimer*);
- 	 *(.s_checkTimerActive*);
-  }
-     
-  .s_formatSensorValue 0xFA00 :
-  {
-    *(.s_formatSensorValue);
-    *(.s_divMod);
-    *(.s_parseCoord);
-  }
-  
-  .s_alarmPage 0xFC00 :
-  {
-   	 *(.s_alarmConfig);
-  }
-
- .s_TimerConfigPage 0xFDE8 :
-  {
-   	 *(.s_timerConfig);
-  }
-    
-
-  
-  
-  /* to be added later
-  .s_ALT 0xFD20 :
-  {
-
-  *(.altmulu16);
-  *(.altinit);
-  *(.altgetALT);
-  *(.altlogfix);
-  *(.altlog2fix);
-  *(.s_ALT*);
-  }
-  */
-
   .ARM.extab :
   {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
@@ -457,35 +541,7 @@ SECTIONS
     __data_end__ = .;        /* define a global symbol at data end */
   } > m_data
 
-  .GFX_ARRAY 0x1FFFF8C0 :
-  {
-      *(.screenBuffer);
-  }
-  
-  .MOD_CONFIG2 0x20000D7A :
-  {
-      *(.s_modConfigAsModel20);
-  }
 
-  
-  .AUX_MEM 0x20000F4A :
-  {
-  *(.s_mainScreenIndex)
-  *(.s_modConfigEeprom);
-  *(.s_longSensors);
-  *(.s_mavlinkGPSFrame)
-  *(.s_timerBuffer);
-  *(.s_timerValue);
-  *(.s_ticks100ms);
-  *(.s_lastTimerUpdate);
-  *(.altconstVal);
-  *(.altconstVal);
-  *(.altinitPressure);
-  *(.altinitPressureRaw);
-  
-    KEEP(*(.AUX_MEM))
-  }
-  
 
   __DATA_END = __DATA_ROM + (__data_end__ - __data_start__);
   text_end = ORIGIN(m_text) + LENGTH(m_text);
@@ -534,4 +590,3 @@ SECTIONS
 
   ASSERT(__StackLimit >= __HeapLimit, "region m_data overflowed with stack and heap")
 }
-
